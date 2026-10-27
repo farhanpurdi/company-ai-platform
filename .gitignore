@@ -1,0 +1,15 @@
+# Secrets and local state: never committed
+*.env
+!*.env.example
+deploy/certs/
+var/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# OS
+.DS_Store

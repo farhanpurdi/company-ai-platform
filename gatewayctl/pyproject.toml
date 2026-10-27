@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gatewayctl"
+version = "0.1.0"
+description = "Declarative provisioning and key lifecycle for the LiteLLM pilot gateway"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7,<3",
+    "PyYAML>=6.0",
+    "httpx>=0.27",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "respx>=0.21",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

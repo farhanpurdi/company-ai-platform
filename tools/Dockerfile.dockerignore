@@ -1,0 +1,8 @@
+# Build context is the repo root; keep secrets and local state out of it.
+.git
+var
+deploy/env
+deploy/certs
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
