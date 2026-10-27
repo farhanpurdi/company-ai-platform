@@ -1,12 +1,14 @@
 import json
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from typer.testing import CliRunner
 
 from fakes import RAW_KEY, RecordingClient
 from gatewayctl import cli
-from gatewayctl.client import GatewayUnavailable
+from gatewayctl.client import ApiError, GatewayUnavailable
 from gatewayctl.model import ActualKey, ActualState, BudgetWindow, KeyPolicy, MemberSpec, TeamSpec
 from gatewayctl.schema import load_entitlements, load_gateway_config
 
@@ -477,3 +479,145 @@ def test_key_list_filters_without_raw_keys(runner, files, desired, backend):
     assert "sari-a" not in result.stderr
     assert "tok-a" not in result.stderr
     assert result.stdout == ""
+
+
+# --- Real LiteLLMClient through respx: error-to-exit-code mapping (spec 6.7) ---
+
+BASE = "http://litellm-a:4000"
+COMMANDS = [
+    ["plan"],
+    ["apply"],
+    ["key", "list"],
+    ["key", "block", "--alias", "x"],
+    ["key", "issue", "--user", "budi@perusahaan.com", "--label", "a"],
+]
+
+
+@pytest.fixture
+def api():
+    with respx.mock(base_url=BASE, assert_all_called=False) as router:
+        yield router
+
+
+def assert_clean_failure(result, code):
+    assert result.exit_code == code, result.stderr
+    assert len(result.stderr.strip().splitlines()) == 1
+    assert "Traceback" not in result.stderr
+    assert result.stdout == ""
+    assert MASTER not in result.stderr
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+@pytest.mark.parametrize("status", [401, 403])
+def test_http_rejected_master_key_exit_3(runner, files, api, command, status):
+    api.get("/key/list").respond(status, text="denied")
+    assert_clean_failure(run(runner, files, *command), 3)
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+@pytest.mark.parametrize("status", [500, 502, 503])
+def test_http_5xx_on_check_exit_3(runner, files, api, command, status):
+    api.get("/key/list").respond(status, text="<html>\nbad gateway " + MASTER + "\n</html>")
+    result = run(runner, files, *command)
+    assert_clean_failure(result, 3)
+    assert str(status) in result.stderr
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+def test_http_other_4xx_on_check_exit_1(runner, files, api, command):
+    api.get("/key/list").respond(400, text="bad request")
+    assert_clean_failure(run(runner, files, *command), 1)
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+def test_connect_error_exit_3(runner, files, api, command):
+    api.get("/key/list").mock(side_effect=httpx.ConnectError("refused"))
+    assert_clean_failure(run(runner, files, *command), 3)
+
+
+def test_malformed_json_in_state_exit_1(runner, files, api):
+    api.get("/key/list").respond(200, json={"keys": []})
+    api.get("/team/list").respond(200, text="<html>not json</html>")
+    assert_clean_failure(run(runner, files, "plan"), 1)
+
+
+def test_unexpected_shape_in_state_exit_1(runner, files, api):
+    api.get("/key/list").respond(200, json={"keys": []})
+    api.get("/team/list").respond(200, json=[{"no_team_id": True}])
+    assert_clean_failure(run(runner, files, "plan"), 1)
+
+
+def test_api_error_while_fetching_state_exit_1(runner, files, api):
+    api.get("/key/list").respond(200, json={"keys": []})
+    api.get("/team/list").respond(500, text="boom")
+    assert_clean_failure(run(runner, files, "plan"), 1)
+
+
+def test_unavailable_mid_apply_is_apply_failure_exit_1(runner, files, backend):
+    # Spec 6.7: an API failure in the middle of apply is exit 1, even if it is a connection loss.
+    class Dropping(RecordingClient):
+        def team_new(self, payload):
+            raise GatewayUnavailable("tidak dapat menghubungi LiteLLM (ReadError)")
+
+    backend.client = Dropping()
+    backend.actual = ActualState({}, frozenset(), (), ())
+    result = run(runner, files, "apply")
+    assert result.exit_code == 1
+    assert "team:dev" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+# --- Unwritable audit log (spec 6.6): fail before any mutation, one line ---
+
+
+@pytest.fixture
+def broken_audit(tmp_path):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x", encoding="utf-8")
+    return {"GATEWAYCTL_AUDIT_LOG": str(blocker / "audit.log")}
+
+
+def test_apply_with_unwritable_audit_fails_before_mutating(runner, files, backend, broken_audit):
+    backend.client = RecordingClient()
+    backend.actual = ActualState({}, frozenset(), (), ())
+    result = run(runner, files, "apply", env=broken_audit)
+    # apply prints the plan first, so only the last line is the error.
+    assert result.exit_code == 1
+    assert "Traceback" not in result.stderr
+    assert "audit log tidak dapat ditulis" in result.stderr.strip().splitlines()[-1]
+    assert backend.client.calls == []
+
+
+def test_key_issue_with_unwritable_audit_does_not_generate(runner, files, desired, backend, broken_audit):
+    backend.client = RecordingClient()
+    backend.actual = synced(desired)
+    result = run(
+        runner, files, "key", "issue", "--user", "budi@perusahaan.com", "--label", "a", env=broken_audit
+    )
+    assert_clean_failure(result, 1)
+    assert "audit" in result.stderr
+    assert backend.client.calls == []
+
+
+def test_key_block_with_unwritable_audit_does_not_block(runner, files, desired, backend, broken_audit):
+    backend.client = RecordingClient()
+    backend.actual = _actual_with_keys(desired)
+    result = run(runner, files, "key", "block", "--alias", "sari-a", env=broken_audit)
+    assert_clean_failure(result, 1)
+    assert backend.client.calls == []
+
+
+def test_key_issue_audit_failing_after_generate_names_alias_and_hides_key(
+    runner, files, desired, backend, monkeypatch
+):
+    backend.client = RecordingClient()
+    backend.actual = synced(desired)
+
+    def full_disk(self, *args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(cli.AuditLog, "record", full_disk)
+    result = run(runner, files, "key", "issue", "--user", "budi@perusahaan.com", "--label", "a")
+    assert_clean_failure(result, 1)
+    assert "budi@perusahaan.com-a" in result.stderr
+    assert RAW_KEY not in result.stderr

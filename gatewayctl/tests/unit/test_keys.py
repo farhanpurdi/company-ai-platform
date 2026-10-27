@@ -109,6 +109,24 @@ def test_audit_never_contains_raw_key(audit):
     assert entry["after"]["token"] == "hash-new-0001"
 
 
+@pytest.mark.parametrize("echo_field", ["token", "token_id"])
+def test_audit_hashes_token_when_api_echoes_raw_key(audit, echo_field):
+    client = RecordingClient()
+    client.key_generate = lambda payload: {"key": RAW_KEY, echo_field: RAW_KEY}
+    issue_key(desired(), state(), client, audit, "budi@perusahaan.com", "opencode")
+    text = audit.path.read_text(encoding="utf-8")
+    assert RAW_KEY not in text
+    token = json.loads(text.splitlines()[0])["after"]["token"]
+    assert len(token) == 64 and not token.startswith("sk-")
+
+
+def test_audit_prefers_token_id(audit):
+    client = RecordingClient()
+    client.key_generate = lambda payload: {"key": RAW_KEY, "token": "tok-x", "token_id": "hash-id"}
+    issue_key(desired(), state(), client, audit, "budi@perusahaan.com", "opencode")
+    assert json.loads(audit.path.read_text(encoding="utf-8"))["after"]["token"] == "hash-id"
+
+
 def test_block_by_user_blocks_all_active_keys(audit):
     keys = (
         akey("budi-a", "budi@perusahaan.com", "tok-a"),

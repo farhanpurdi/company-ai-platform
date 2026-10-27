@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from gatewayctl.apply import MANAGED_METADATA
 from gatewayctl.audit import AuditLog
 from gatewayctl.client import LiteLLMClient
@@ -40,13 +42,18 @@ def issue_key(
             "metadata": {**MANAGED_METADATA, "owner_kind": member.kind},
         }
     )
+    raw = result["key"]
+    token = result.get("token_id") or result.get("token")
+    if not token or token == raw or str(token).startswith("sk-"):
+        # Never let a raw key reach the audit file, even if the API echoes it as the token.
+        token = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     audit.record(
         "issue_key",
         f"key:{alias}",
         None,
-        {"token": result.get("token"), "user_id": owner, "team_id": member.team_id, "key_alias": alias},
+        {"token": token, "user_id": owner, "team_id": member.team_id, "key_alias": alias},
     )
-    return result["key"]
+    return raw
 
 
 def block_keys(

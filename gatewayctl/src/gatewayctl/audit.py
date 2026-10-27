@@ -14,6 +14,12 @@ class AuditLog:
         self.operator = operator
         self.git_sha = git_sha
 
+    def ensure_writable(self) -> None:
+        """Raise OSError now if the log cannot be appended to, before anything is mutated."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8"):
+            pass
+
     def record(
         self, action: str, target: str, before: Mapping | None, after: Mapping | None
     ) -> None:

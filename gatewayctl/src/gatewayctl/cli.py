@@ -89,8 +89,18 @@ def _require_operator() -> str:
 
 
 def _audit(operator: str) -> AuditLog:
+    """Build the audit log and prove it is writable before any mutating call."""
     path = os.environ.get("GATEWAYCTL_AUDIT_LOG") or DEFAULT_AUDIT_LOG
-    return AuditLog(Path(path), operator, os.environ.get("GATEWAYCTL_GIT_SHA") or "unknown")
+    audit = AuditLog(Path(path), operator, os.environ.get("GATEWAYCTL_GIT_SHA") or "unknown")
+    try:
+        audit.ensure_writable()
+    except OSError as exc:
+        fail(f"audit log tidak dapat ditulis ({audit.path}): {exc.strerror or type(exc).__name__}")
+    return audit
+
+
+def _audit_failed(audit: AuditLog, exc: OSError) -> NoReturn:
+    fail(f"audit log gagal ditulis ({audit.path}): {exc.strerror or type(exc).__name__}")
 
 
 def _master_key() -> str:
@@ -106,6 +116,11 @@ def _connect(settings: Settings, master_key: str):
         client.check()
     except GatewayUnavailable as exc:
         fail(str(exc), EXIT_UNAVAILABLE)
+    except ApiError as exc:
+        # Body is left out on purpose: a proxy error page can be long and multi-line.
+        if exc.status >= 500:
+            fail(f"LiteLLM belum siap (HTTP {exc.status} pada {exc.path})", EXIT_UNAVAILABLE)
+        fail(f"LiteLLM menolak permintaan (HTTP {exc.status} pada {exc.path})")
     return client
 
 
@@ -116,6 +131,8 @@ def _fetch(client) -> ActualState:
         fail(str(exc), EXIT_UNAVAILABLE)
     except ApiError as exc:
         fail(f"LiteLLM menolak permintaan: {exc}")
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        fail(f"respons LiteLLM tidak sesuai format yang diharapkan ({type(exc).__name__})")
 
 
 def _connect_and_fetch(settings: Settings, master_key: str):
@@ -219,8 +236,11 @@ def apply_command(
     _print_plan(plan)
     if any(a.destructive for a in plan.actions) and not confirm:
         fail("Ada aksi destruktif; tidak ada yang dijalankan. Ulangi dengan --confirm.", EXIT_NEEDS_CONFIRM)
+    audit = _audit(operator)
     try:
-        done = execute(plan, client, _audit(operator))
+        done = execute(plan, client, audit)
+    except OSError as exc:
+        _audit_failed(audit, exc)
     except ApplyError as exc:
         cause = redact(str(exc.cause), [master_key])
         fail(
@@ -244,10 +264,19 @@ def key_issue(
     operator = _require_operator()
     master_key = _master_key()
     client, actual = _connect_and_fetch(settings, master_key)
+    owner = normalize_id(user)
+    audit = _audit(operator)
     try:
-        raw = issue_key(desired, actual, client, _audit(operator), normalize_id(user), label.strip())
+        raw = issue_key(desired, actual, client, audit, owner, label.strip())
     except ValueError as exc:
         fail(str(exc))
+    except OSError as exc:
+        alias = f"{owner}-{label.strip()}"
+        fail(
+            f"key '{alias}' sudah dibuat di LiteLLM tetapi audit log gagal ditulis "
+            f"({exc.strerror or type(exc).__name__}); key mentah tidak ditampilkan, "
+            f"blokir dengan: gatewayctl key block --alias {alias}"
+        )
     except GatewayUnavailable as exc:
         fail(str(exc), EXIT_UNAVAILABLE)
     except ApiError as exc:
@@ -268,14 +297,17 @@ def key_block(
     operator = _require_operator()
     master_key = _master_key()
     client, actual = _connect_and_fetch(settings, master_key)
+    audit = _audit(operator)
     try:
         blocked = block_keys(
             actual,
             client,
-            _audit(operator),
+            audit,
             user_id=normalize_id(user) if user is not None else None,
             alias=alias,
         )
+    except OSError as exc:
+        _audit_failed(audit, exc)
     except GatewayUnavailable as exc:
         fail(str(exc), EXIT_UNAVAILABLE)
     except ApiError as exc:
