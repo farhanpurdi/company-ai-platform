@@ -136,7 +136,7 @@ def create_app() -> FastAPI:
 
         if stream:
             return StreamingResponse(
-                _stream(cid, created, model, usage, mode == "fail_mid_stream"),
+                _stream(cid, created, model, usage, mode == "fail_mid_stream", delay_ms),
                 media_type="text/event-stream",
             )
 
@@ -197,9 +197,15 @@ def create_app() -> FastAPI:
     return app
 
 
-async def _stream(cid: str, created: int, model: str, usage: dict, fail_mid: bool):
+async def _stream(
+    cid: str, created: int, model: str, usage: dict, fail_mid: bool, fail_delay_ms: int = 0
+):
     for i in range(STREAM_CHUNKS):
         if fail_mid and i == 2:
+            # A pause lets the reader consume the chunks already sent before the
+            # connection drops; without it they can arrive together with the
+            # close and be discarded, which looks like a failure before the stream.
+            await asyncio.sleep(fail_delay_ms / 1000)
             raise MidStreamFailure()
         last = i == STREAM_CHUNKS - 1
         chunk = {

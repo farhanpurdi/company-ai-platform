@@ -121,6 +121,28 @@ def test_fail_mid_stream_sends_two_chunks_then_breaks(client):
     assert client.post("/v1/chat/completions", json=BODY).status_code == 200
 
 
+def test_fail_mid_stream_waits_delay_after_chunks_before_breaking(client):
+    import time
+
+    client.post(
+        "/_mock/scenario",
+        json={"model": TERRA, "mode": "fail_mid_stream", "count": 1, "delay_ms": 300},
+    )
+    seen = []
+    t0 = time.monotonic()
+    first_chunk_at = None
+    with pytest.raises(Exception):
+        with client.stream("POST", "/v1/chat/completions", json={**BODY, "stream": True}) as r:
+            for line in r.iter_lines():
+                if first_chunk_at is None and line.startswith("data: "):
+                    first_chunk_at = time.monotonic() - t0
+                seen.append(line)
+    assert len(sse_data(seen)) == 2
+    # Chunks are sent right away; only the break waits, so a reader sees them first.
+    assert first_chunk_at is not None and first_chunk_at < 0.25
+    assert time.monotonic() - t0 >= 0.29
+
+
 def test_requests_recorded_with_auth_hash_not_raw(client):
     client.post(
         "/v1/chat/completions",
