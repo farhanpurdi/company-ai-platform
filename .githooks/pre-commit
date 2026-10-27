@@ -1,0 +1,51 @@
+#!/bin/sh
+# Versioned pre-commit hook, enabled with `make hooks`. It enforces the CLAUDE.md
+# rules that are cheap to check mechanically before review:
+#   1. no env files, var/ or deploy/certs/ in the commit;
+#   2. no raw key on an added line (pattern, plus the real values in deploy/env/*.env);
+#   3. staged shell scripts parse;
+#   4. `make unit` passes when code, deploy or test files are staged (SKIP_UNIT=1 skips it).
+# Matched values are never printed.
+set -eu
+
+fail() {
+	echo "pre-commit: $*" >&2
+	exit 1
+}
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+[ -n "$staged" ] || exit 0
+
+forbidden="$(printf '%s\n' "$staged" | grep -E '^(var/|deploy/certs/)|\.env$' || true)"
+[ -z "$forbidden" ] || fail "file berikut tidak boleh di-commit (CLAUDE.md):
+$forbidden"
+
+umask 077
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+git diff --cached -U0 --no-color | grep '^+' | grep -v '^+++' >"$work/added" || true
+
+if grep -qE 'sk-(proj-|svcacct-|admin-)?[A-Za-z0-9_]{20,}' "$work/added"; then
+	fail "baris baru berisi pola key (sk-...); hapus sebelum commit"
+fi
+
+: >"$work/secrets"
+for env_file in deploy/env/*.env; do
+	[ -f "$env_file" ] || continue
+	sed -n -E 's/^(LITELLM_MASTER_KEY|LITELLM_SALT_KEY|OPENAI_API_KEY|POSTGRES_PASSWORD|REDIS_PASSWORD)=//p' "$env_file" |
+		sed -e 's/\r$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/" | grep -v '^$' >>"$work/secrets" || true
+done
+if [ -s "$work/secrets" ] && grep -qF -f "$work/secrets" "$work/added"; then
+	fail "baris baru berisi nilai rahasia dari deploy/env/*.env; hapus sebelum commit"
+fi
+
+for script in $(printf '%s\n' "$staged" | grep -E '\.sh$|^\.githooks/' || true); do
+	sh -n "$script" || fail "$script tidak lolos sh -n"
+done
+
+if [ "${SKIP_UNIT:-0}" != "1" ] && printf '%s\n' "$staged" | grep -qE '^(gatewayctl|mock_upstream|deploy|tools)/|^Makefile$'; then
+	make -s unit >"$work/unit.log" 2>&1 || {
+		tail -n 20 "$work/unit.log" >&2
+		fail "make unit gagal"
+	}
+fi

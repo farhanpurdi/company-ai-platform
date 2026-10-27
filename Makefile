@@ -21,7 +21,11 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl local-ca test smoke
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl local-ca test smoke hooks
+
+# Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
+hooks:
+	git config core.hooksPath .githooks
 
 # Image with gatewayctl, pytest and the test dependencies.
 tools-build:

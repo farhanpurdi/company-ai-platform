@@ -21,6 +21,7 @@ Bila kode dan spec berbeda, tanyakan dulu. Jangan mengubah diam-diam perilaku ya
 
 - Team, member, budget, dan izin alias diubah di `entitlements/*.yaml`, lalu `make plan` dan `make apply`. Jangan memakai `curl` manual ke management API untuk itu.
 - Semua tool Python berjalan di container `tools`; host cukup Docker dan make. Jangan memasang dependensi ke host.
+- Aktifkan hook pre-commit sekali per clone dengan `make hooks`. Hook menolak file env/`var/`/`deploy/certs/`, key mentah, dan skrip shell yang rusak, lalu menjalankan `make unit`. Jangan melewatinya dengan `--no-verify`.
 - `make unit` tidak butuh stack. `make test` butuh stack lokal hidup (`make up`; `make init-local` hanya sekali).
 - Uji acceptance berbagi state stack (mock, budget, rate limit): jangan menjalankan dua `make test` bersamaan.
 - Ambang T03 (overshoot ≤ 10%) dan T09 (tanpa fallback di tengah stream) tidak boleh dilonggarkan, di-skip, atau di-xfail. Kegagalan asli dilaporkan sebagai temuan Gate 2.
