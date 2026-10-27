@@ -1,5 +1,5 @@
-# Entitlement uji untuk profil lokal (mock upstream). Dipakai oleh `make apply`
-# ENV=local, uji integrasi, dan uji acceptance. Bukan data pengguna sebenarnya.
+# Test entitlements for the local profile (mock upstream). Used by `make apply`
+# with ENV=local and by the integration and acceptance tests. Not real user data.
 version: 1
 teams:
   it-developer:
@@ -29,8 +29,8 @@ teams:
     members:
       - fin1@local.test
 
-  # Limit kecil untuk T02 (budget habis), T03 (overshoot paralel), dan T04 (rpm).
-  # Satu request mock = 1000 token input + 500 token output Terra = $0.01.
+  # Small limits for T02 (budget exhausted), T03 (parallel overshoot) and T04 (rpm).
+  # One mock request = 1000 input tokens + 500 output tokens on Terra = $0.01.
   qa-limits:
     alias: "QA Limits (uji)"
     models: [company-fast]

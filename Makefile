@@ -47,20 +47,23 @@ logs:
 config:
 	$(COMPOSE) config -q
 
+# Recipes that run gatewayctl are silent (@): make's own command echo would go
+# to stdout and corrupt KEY=$(make ctl ARGS='key issue ...').
+
 # make plan [ARGS=--json]; exit 2 means there are changes.
 plan:
-	$(CTL) plan $(ARGS)
+	@$(CTL) plan $(ARGS)
 
 # make apply [ARGS='--confirm --prune']
 apply:
-	$(CTL) apply $(ARGS)
+	@$(CTL) apply $(ARGS)
 
 # make ctl ARGS='key issue --user U --label L' (also key block/list)
 ctl:
-	$(CTL) $(ARGS)
+	@$(CTL) $(ARGS)
 
 # Needs the local stack (make up). Test dirs that do not exist yet are skipped;
 # the T10 log scan runs once scripts/t10-scan-logs.sh exists.
 test:
 	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider $(wildcard tests/integration tests/acceptance) -v
-	@if [ -f scripts/t10-scan-logs.sh ]; then sh scripts/t10-scan-logs.sh $(ENV); else echo "scripts/t10-scan-logs.sh belum ada; scan log T10 dilewati"; fi
+	@if [ -f scripts/t10-scan-logs.sh ]; then scripts/t10-scan-logs.sh $(ENV); else echo "scripts/t10-scan-logs.sh belum ada; scan log T10 dilewati"; fi

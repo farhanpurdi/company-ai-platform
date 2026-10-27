@@ -7,9 +7,9 @@ import time
 from pathlib import Path
 
 import yaml
+from gatewayctl.client import ApiError
 
 from helpers import LOCAL_ENTITLEMENTS, admin, chat, gateway, issue_key, run_ctl
-from gatewayctl.client import ApiError
 
 REVOCATION_TIMEOUT_S = 300
 POLL_INTERVAL_S = 5
@@ -85,6 +85,8 @@ def test_removed_member_is_offboarded(applied, tmp_path):
 
         assert run_ctl("apply", file=file_without).returncode == 4
         _ok(run_ctl("apply", "--confirm", file=file_without))
+        members = admin().team_info("it-developer")["team_memberships"]
+        assert "tmp-off@local.test" not in {m["user_id"] for m in members}
         assert _wait_for_status(key, 401) == 401
     finally:
         restore = run_ctl("apply", "--confirm")
