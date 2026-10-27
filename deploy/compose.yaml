@@ -1,0 +1,121 @@
+# Core services shared by every profile. Run through the Makefile, which adds
+# the profile overlay (compose.local.yaml or compose.vm.yaml) and its env file.
+
+x-litellm-env: &litellm-env
+  LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY belum diisi}
+  LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY belum diisi}
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL belum diisi}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY belum diisi}
+  OPENAI_API_BASE: ${OPENAI_API_BASE:?OPENAI_API_BASE belum diisi}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD belum diisi}
+  LITELLM_MODE: PRODUCTION
+  # Never DEBUG: it logs request bodies.
+  LITELLM_LOG: INFO
+  JSON_LOGS: "True"
+
+x-litellm: &litellm
+  # Newest stable release >= v1.93.0 at implementation time, pinned by index digest.
+  image: ghcr.io/berriai/litellm:v1.106.4@sha256:c169fb3adc514fcf210377c203f3de406d54f10bfdacf13948a4a839db9af7de
+  command: ["--config", "/app/config.yaml", "--port", "4000"]
+  volumes:
+    - ./litellm/config.yaml:/app/config.yaml:ro
+  environment: *litellm-env
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+    interval: 10s
+    timeout: 5s
+    retries: 6
+    start_period: 120s
+  restart: unless-stopped
+
+services:
+  litellm-a:
+    <<: *litellm
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  litellm-b:
+    <<: *litellm
+    environment:
+      <<: *litellm-env
+      # Migrations run once, on litellm-a.
+      DISABLE_SCHEMA_UPDATE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      litellm-a:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum diisi}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "litellm", "-d", "litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD belum diisi}
+    # Password comes from the container env so it stays out of the command line.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    environment:
+      LLM_HOST: ${LLM_HOST:?LLM_HOST belum diisi}
+      LLM_ADMIN_HOST: ${LLM_ADMIN_HOST:?LLM_ADMIN_HOST belum diisi}
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      default:
+        # Lets containers (tools) reach the gateway by its public hostnames.
+        aliases:
+          - ${LLM_HOST}
+          - ${LLM_ADMIN_HOST}
+    depends_on:
+      litellm-a:
+        condition: service_started
+      litellm-b:
+        condition: service_started
+    restart: unless-stopped
+
+  tools:
+    profiles: ["tools"]
+    image: llm-gateway-tools
+    build:
+      context: ..
+      dockerfile: tools/Dockerfile
+    working_dir: /repo
+    volumes:
+      - ..:/repo
+    environment:
+      LITELLM_BASE_URL: http://litellm-a:4000
+      GATEWAY_URL: https://${LLM_HOST}
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,48 @@
+# VM profile: company certificate from TLS_CERT_DIR, admin host only from the VPN.
+# Caddy redacts Authorization and Cookie headers in access logs by default.
+
+(litellm_upstream) {
+	reverse_proxy litellm-a:4000 litellm-b:4000 {
+		lb_policy round_robin
+		health_uri /health/liveliness
+		health_interval 5s
+		health_timeout 3s
+		flush_interval -1
+		transport http {
+			read_timeout 600s
+		}
+	}
+}
+
+(access_log) {
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$LLM_HOST} {
+	tls /certs/fullchain.pem /certs/privkey.pem
+	import access_log
+
+	@inference path /v1/chat/completions /v1/models /health/liveliness
+	handle @inference {
+		import litellm_upstream
+	}
+	handle {
+		respond 404
+	}
+}
+
+{$LLM_ADMIN_HOST} {
+	tls /certs/fullchain.pem /certs/privkey.pem
+	import access_log
+
+	@vpn remote_ip {$VPN_CIDR}
+	handle @vpn {
+		import litellm_upstream
+	}
+	handle {
+		respond 403
+	}
+}

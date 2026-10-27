@@ -1,0 +1,44 @@
+# Local profile: internal CA, published on 127.0.0.1:8443 only.
+# Caddy redacts Authorization and Cookie headers in access logs by default.
+{
+	skip_install_trust
+}
+
+(litellm_upstream) {
+	reverse_proxy litellm-a:4000 litellm-b:4000 {
+		lb_policy round_robin
+		health_uri /health/liveliness
+		health_interval 5s
+		health_timeout 3s
+		flush_interval -1
+		transport http {
+			read_timeout 600s
+		}
+	}
+}
+
+(access_log) {
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$LLM_HOST} {
+	tls internal
+	import access_log
+
+	@inference path /v1/chat/completions /v1/models /health/liveliness
+	handle @inference {
+		import litellm_upstream
+	}
+	handle {
+		respond 404
+	}
+}
+
+{$LLM_ADMIN_HOST} {
+	tls internal
+	import access_log
+	import litellm_upstream
+}
