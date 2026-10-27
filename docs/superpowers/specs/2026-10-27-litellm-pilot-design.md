@@ -284,7 +284,7 @@ Nilai berikut dipakai pilot hingga dikonfirmasi pada Gate 1:
 | Target waktu pencabutan key (T05) | 5 menit |
 | Domain internal | `llm.perusahaan.internal`, `llm-admin.perusahaan.internal` |
 | CIDR VPN | Diisi di `vm.env` |
-| Versi LiteLLM | v1.93.0-stable terbaru saat implementasi, dipin ke digest |
+| Versi LiteLLM | v1.93.0-stable terbaru saat implementasi, dipin ke digest. Catatan implementasi: LiteLLM tidak lagi menerbitkan tag `-stable` berversi (tidak ada `v1.93.0-stable`); yang dipin adalah `v1.106.4@sha256:c169fb3a…`, digest yang sama dengan `main-stable` per 2026-10-27 |
 
 ## 11. Risiko
 

@@ -1,5 +1,6 @@
 # VM profile: company certificate from TLS_CERT_DIR, admin host only from the VPN.
-# Caddy redacts Authorization and Cookie headers in access logs by default.
+# Caddy redacts Authorization and Cookie headers in access logs by default; the
+# access_log snippet also redacts every other header LiteLLM accepts a key from.
 
 (litellm_upstream) {
 	reverse_proxy litellm-a:4000 litellm-b:4000 {
@@ -17,7 +18,15 @@
 (access_log) {
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			request>headers>X-Litellm-Api-Key replace REDACTED
+			request>headers>Api-Key replace REDACTED
+			request>headers>X-Api-Key replace REDACTED
+			request>headers>X-Goog-Api-Key replace REDACTED
+			request>headers>Ocp-Apim-Subscription-Key replace REDACTED
+			request>headers>X-Mcp-Auth replace REDACTED
+		}
 	}
 }
 

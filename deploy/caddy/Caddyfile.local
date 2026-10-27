@@ -1,5 +1,6 @@
 # Local profile: internal CA, published on 127.0.0.1:8443 only.
-# Caddy redacts Authorization and Cookie headers in access logs by default.
+# Caddy redacts Authorization and Cookie headers in access logs by default; the
+# access_log snippet also redacts every other header LiteLLM accepts a key from.
 {
 	skip_install_trust
 }
@@ -20,7 +21,15 @@
 (access_log) {
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			request>headers>X-Litellm-Api-Key replace REDACTED
+			request>headers>Api-Key replace REDACTED
+			request>headers>X-Api-Key replace REDACTED
+			request>headers>X-Goog-Api-Key replace REDACTED
+			request>headers>Ocp-Apim-Subscription-Key replace REDACTED
+			request>headers>X-Mcp-Auth replace REDACTED
+		}
 	}
 }
 
