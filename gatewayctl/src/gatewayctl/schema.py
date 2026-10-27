@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+import unicodedata
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -15,9 +16,11 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    Strict,
     ValidationError,
     model_validator,
 )
+from yaml.constructor import ConstructorError
 
 from gatewayctl.model import BudgetWindow, DesiredState, KeyPolicy, MemberSpec, TeamSpec
 
@@ -92,13 +95,69 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise EntitlementsError(where, f"file tidak dapat dibaca ({exc.strerror or exc})") from None
+    except UnicodeDecodeError:
+        raise EntitlementsError(where, "file bukan teks UTF-8; simpan ulang sebagai UTF-8") from None
     try:
-        data = yaml.safe_load(text)
+        data = _safe_load_unique(text)
     except yaml.YAMLError as exc:
         raise EntitlementsError(where, f"YAML tidak valid: {_yaml_problem(exc)}") from None
     if not isinstance(data, dict):
         raise EntitlementsError(where, "isi file harus berupa mapping YAML")
     return data
+
+
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+
+
+def _safe_load_unique(text: str) -> Any:
+    """yaml.safe_load that rejects a repeated mapping key instead of keeping the last one."""
+    loader = yaml.SafeLoader(text)
+    try:
+        node = loader.get_single_node()
+        if node is None:
+            return None
+        _check_unique_keys(loader, node)
+        return loader.construct_document(node)
+    finally:
+        loader.dispose()
+
+
+def _check_unique_keys(loader: yaml.SafeLoader, root: yaml.Node) -> None:
+    visited: set[int] = set()
+    stack: list[tuple[yaml.Node, str]] = [(root, "")]
+    while stack:
+        node, path = stack.pop()
+        # Aliases share nodes; visit each once (also guards recursive anchors).
+        if id(node) in visited:
+            continue
+        visited.add(id(node))
+        if isinstance(node, yaml.SequenceNode):
+            stack.extend((child, f"{path}[{i}]") for i, child in enumerate(node.value))
+            continue
+        if not isinstance(node, yaml.MappingNode):
+            continue
+        first_line: dict[Any, int] = {}
+        for key_node, value_node in node.value:
+            if key_node.tag == _MERGE_TAG:
+                # `<<: *anchor` followed by an explicit key is an override, not a duplicate.
+                stack.append((value_node, path))
+                continue
+            if not isinstance(key_node, yaml.ScalarNode):
+                continue
+            key = loader.construct_object(key_node)
+            if not isinstance(key, Hashable):
+                continue
+            if key in first_line:
+                where = f" di {path}" if path else ""
+                raise ConstructorError(
+                    problem=(
+                        f"kunci duplikat '{key}'{where}, "
+                        f"pertama ditulis di baris {first_line[key] + 1}"
+                    ),
+                    problem_mark=key_node.start_mark,
+                )
+            first_line[key] = key_node.start_mark.line
+            stack.append((value_node, f"{path}.{key}" if path else str(key)))
 
 
 def _yaml_problem(exc: yaml.YAMLError) -> str:
@@ -112,8 +171,29 @@ def _yaml_problem(exc: yaml.YAMLError) -> str:
 # --- pydantic file model ---------------------------------------------------
 
 
-def _normalize_id(value: Any) -> Any:
-    return value.strip().lower() if isinstance(value, str) else value
+def normalize_id(value: str) -> str:
+    """Canonical user_id or service account name; the CLI uses it for --user too."""
+    return value.strip().lower()
+
+
+def _normalize_id_input(value: Any) -> Any:
+    return normalize_id(value) if isinstance(value, str) else value
+
+
+def _id_problem(value: str) -> str | None:
+    if not value:
+        return "tidak boleh kosong"
+    # Cf covers zero-width characters that str.strip() and isspace() miss.
+    if any(ch.isspace() or unicodedata.category(ch) == "Cf" for ch in value):
+        return f"id {value!r} tidak boleh mengandung spasi atau karakter tak terlihat"
+    return None
+
+
+def _valid_id(value: str) -> str:
+    problem = _id_problem(value)
+    if problem:
+        raise ValueError(problem)
+    return value
 
 
 def _non_empty(value: str) -> str:
@@ -134,27 +214,60 @@ def _duration(value: str) -> str:
             f"durasi '{value}' tidak valid; harus cocok dengan pola {DURATION_PATTERN}, "
             "misalnya 24h atau 30d"
         )
+    if _duration_hours(value) == 0:
+        raise ValueError(f"durasi '{value}' harus lebih dari 0")
     return value
+
+
+def _duration_hours(value: str) -> int:
+    return int(value[:-1]) * (24 if value.endswith("d") else 1)
+
+
+def _exactly_int(value: Any) -> Any:
+    # Literal[1] alone also accepts true and 1.0.
+    if type(value) is not int:
+        raise ValueError("harus bernilai 1")
+    return value
+
+
+def _require_string_keys(data: Any) -> None:
+    if isinstance(data, dict):
+        for key in data:
+            if not isinstance(key, str):
+                raise ValueError(
+                    f"kunci {key!r} bukan teks (YAML membacanya sebagai "
+                    f"{type(key).__name__}); beri tanda kutip"
+                )
 
 
 def _none_as_empty_list(value: Any) -> Any:
     return [] if value is None else value
 
 
-def _none_as_empty_dict(value: Any) -> Any:
-    return {} if value is None else value
+def _string_keyed_dict(value: Any) -> Any:
+    if value is None:
+        return {}
+    _require_string_keys(value)
+    return value
 
 
-UserId = Annotated[str, BeforeValidator(_normalize_id), AfterValidator(_non_empty)]
+UserId = Annotated[str, BeforeValidator(_normalize_id_input), AfterValidator(_valid_id)]
 TeamId = Annotated[str, AfterValidator(_team_id)]
 Duration = Annotated[str, AfterValidator(_duration)]
-Usd = Annotated[float, Field(ge=0, allow_inf_nan=False)]
-Rpm = Annotated[int, Field(gt=0)]
+# Strict: YAML true/yes and quoted numbers must not become 1 or a number silently.
+Usd = Annotated[float, Strict(), Field(ge=0, allow_inf_nan=False)]
+Rpm = Annotated[int, Strict(), Field(gt=0)]
 Aliases = Annotated[list[str], Field(min_length=1)]
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _string_keys(cls, data: Any) -> Any:
+        _require_string_keys(data)
+        return data
 
 
 class _Budget(_Strict):
@@ -166,9 +279,11 @@ Budgets = Annotated[list[_Budget], BeforeValidator(_none_as_empty_list)]
 
 
 class _Key(_Strict):
+    # None means "not set": a member override then inherits member_defaults.key,
+    # so a null (e.g. commented-out list items) never drops a limit. [] clears budgets.
     models: Aliases | None = None
     rpm_limit: Rpm | None = None
-    budgets: Budgets = Field(default_factory=list)
+    budgets: list[_Budget] | None = None
 
 
 class _MemberDefaults(_Strict):
@@ -215,12 +330,12 @@ class _ServiceAccount(_Strict):
 
 
 class _File(_Strict):
-    version: Literal[1]
-    teams: Annotated[dict[TeamId, _Team], BeforeValidator(_none_as_empty_dict)] = Field(
+    version: Annotated[Literal[1], BeforeValidator(_exactly_int)]
+    teams: Annotated[dict[TeamId, _Team], BeforeValidator(_string_keyed_dict)] = Field(
         default_factory=dict
     )
     service_accounts: Annotated[
-        dict[str, _ServiceAccount], BeforeValidator(_none_as_empty_dict)
+        dict[str, _ServiceAccount], BeforeValidator(_string_keyed_dict)
     ] = Field(default_factory=dict)
 
 
@@ -252,7 +367,7 @@ def _message(error: Mapping[str, Any]) -> str:
         return f"tidak boleh kurang dari {ctx['ge']}"
     if kind == "literal_error":
         return f"harus bernilai {ctx['expected']}"
-    return _MESSAGES.get(kind, error["msg"])
+    return _MESSAGES.get(kind) or f"nilai tidak valid ({error['msg']})"
 
 
 def _join_loc(loc: tuple[int | str, ...]) -> str:
@@ -300,6 +415,7 @@ def _resolve(doc: _File, gateway: GatewayConfig) -> DesiredState:
 
         defaults = team.member_defaults
         _check_subset(defaults.key.models, team_models, f"{base}.member_defaults.key.models", team_id)
+        _check_budgets(defaults.key.budgets, f"{base}.member_defaults.key.budgets")
         for i, member in enumerate(team.members):
             path = f"{base}.members[{i}]"
             user_id = member.user_id
@@ -310,10 +426,12 @@ def _resolve(doc: _File, gateway: GatewayConfig) -> DesiredState:
             key = defaults.key
             if member.key is not None:
                 _check_subset(member.key.models, team_models, f"{path}.key.models", team_id)
+                _check_budgets(member.key.budgets, f"{path}.key.budgets")
+                # Null fields inherit the defaults (see _Key).
                 key = key.model_copy(
-                    update={name: getattr(member.key, name) for name in member.key.model_fields_set}
+                    update={name: value for name, value in member.key if value is not None}
                 )
-            if "max_budget_in_team" in member.model_fields_set:
+            if member.max_budget_in_team is not None:
                 budget_in_team = member.max_budget_in_team
             else:
                 budget_in_team = defaults.max_budget_in_team
@@ -322,9 +440,10 @@ def _resolve(doc: _File, gateway: GatewayConfig) -> DesiredState:
 
     for name, account in doc.service_accounts.items():
         path = f"service_accounts.{name}"
-        account_id = _normalize_id(name)
-        if not account_id:
-            raise EntitlementsError(path, "nama service account tidak boleh kosong")
+        account_id = normalize_id(name)
+        problem = _id_problem(account_id)
+        if problem:
+            raise EntitlementsError(path, f"nama service account {problem}")
         if account_id in members:
             other = members[account_id]
             if other.kind == "user":
@@ -336,6 +455,7 @@ def _resolve(doc: _File, gateway: GatewayConfig) -> DesiredState:
             raise EntitlementsError(f"{path}.team", f"team '{account.team}' tidak ada di file")
         team_models = teams[account.team].models
         _check_subset(account.models, team_models, f"{path}.models", account.team)
+        _check_budgets(account.budgets, f"{path}.budgets")
         members[account_id] = MemberSpec(account_id, account.team, None, "service_account")
         policies[account_id] = _policy(
             account.models, account.rpm_limit, account.budgets, team_models
@@ -355,14 +475,28 @@ def _check_subset(
         raise EntitlementsError(path, f"model {listed} tidak termasuk models team '{team_id}'")
 
 
+def _check_budgets(budgets: list[_Budget] | None, path: str) -> None:
+    """One key must not carry two windows of the same length (24h and 1d count as equal)."""
+    first: dict[int, int] = {}
+    for i, budget in enumerate(budgets or ()):
+        hours = _duration_hours(budget.duration)
+        if hours in first:
+            raise EntitlementsError(
+                f"{path}[{i}].duration",
+                f"durasi '{budget.duration}' sama dengan {path}[{first[hours]}]; "
+                "satu key hanya boleh punya satu budget per durasi",
+            )
+        first[hours] = i
+
+
 def _policy(
     models: list[str] | None,
     rpm_limit: int | None,
-    budgets: list[_Budget],
+    budgets: list[_Budget] | None,
     team_models: frozenset[str],
 ) -> KeyPolicy:
     return KeyPolicy(
         models=frozenset(models) if models is not None else team_models,
         rpm_limit=rpm_limit,
-        budgets=tuple(BudgetWindow(b.duration, b.max_usd) for b in budgets),
+        budgets=tuple(BudgetWindow(b.duration, b.max_usd) for b in budgets or ()),
     )
