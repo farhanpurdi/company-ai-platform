@@ -4,7 +4,17 @@ TOOLS_IMAGE := llm-gateway-tools
 ENV ?= local
 COMPOSE = docker compose -p llm-gateway-$(ENV) -f deploy/compose.yaml -f deploy/compose.$(ENV).yaml --env-file deploy/env/$(ENV).env
 
-.PHONY: tools-build unit init-local up down ps logs config
+# Entitlements file per profile; override with FILE=...
+FILE_local := entitlements/local.yaml
+FILE_vm := entitlements/pilot.yaml
+FILE ?= $(FILE_$(ENV))
+OPERATOR ?= $(shell git config user.email)
+GIT_SHA = $(shell git log -1 --format=%H -- $(FILE))
+
+# -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
+CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
+
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test
 
 # Image with gatewayctl, pytest and the test dependencies.
 tools-build:
@@ -36,3 +46,21 @@ logs:
 # Validate only (-q): the rendered config would contain secrets.
 config:
 	$(COMPOSE) config -q
+
+# make plan [ARGS=--json]; exit 2 means there are changes.
+plan:
+	$(CTL) plan $(ARGS)
+
+# make apply [ARGS='--confirm --prune']
+apply:
+	$(CTL) apply $(ARGS)
+
+# make ctl ARGS='key issue --user U --label L' (also key block/list)
+ctl:
+	$(CTL) $(ARGS)
+
+# Needs the local stack (make up). Test dirs that do not exist yet are skipped;
+# the T10 log scan runs once scripts/t10-scan-logs.sh exists.
+test:
+	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider $(wildcard tests/integration tests/acceptance) -v
+	@if [ -f scripts/t10-scan-logs.sh ]; then sh scripts/t10-scan-logs.sh $(ENV); else echo "scripts/t10-scan-logs.sh belum ada; scan log T10 dilewati"; fi

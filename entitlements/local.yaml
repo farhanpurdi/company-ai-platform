@@ -1,0 +1,52 @@
+# Entitlement uji untuk profil lokal (mock upstream). Dipakai oleh `make apply`
+# ENV=local, uji integrasi, dan uji acceptance. Bukan data pengguna sebenarnya.
+version: 1
+teams:
+  it-developer:
+    alias: "IT / Developer (uji)"
+    models: [company-fast, company-coding, company-reasoning]
+    budget: { max_usd: 500, duration: 30d }
+    rpm_limit: 600
+    member_defaults:
+      max_budget_in_team: 100
+      key:
+        rpm_limit: 60
+        budgets: [{ duration: 24h, max_usd: 10 }, { duration: 30d, max_usd: 100 }]
+    members:
+      - dev1@local.test
+      - dev2@local.test
+
+  finance:
+    alias: "Finance (uji)"
+    models: [company-fast]
+    budget: { max_usd: 100, duration: 30d }
+    rpm_limit: 300
+    member_defaults:
+      max_budget_in_team: 50
+      key:
+        rpm_limit: 60
+        budgets: [{ duration: 24h, max_usd: 5 }, { duration: 30d, max_usd: 50 }]
+    members:
+      - fin1@local.test
+
+  # Limit kecil untuk T02 (budget habis), T03 (overshoot paralel), dan T04 (rpm).
+  # Satu request mock = 1000 token input + 500 token output Terra = $0.01.
+  qa-limits:
+    alias: "QA Limits (uji)"
+    models: [company-fast]
+    budget: { max_usd: 10, duration: 30d }
+    rpm_limit: 600
+    members:
+      - user_id: budget1@local.test
+        key: { budgets: [{ duration: 30d, max_usd: 0.05 }] }
+      - user_id: parallel1@local.test
+        key: { budgets: [{ duration: 30d, max_usd: 0.10 }] }
+      - user_id: rate1@local.test
+        key: { rpm_limit: 3 }
+
+service_accounts:
+  svc-test:
+    team: it-developer
+    models: [company-fast]
+    rpm_limit: 120
+    budgets: [{ duration: 30d, max_usd: 5 }]
