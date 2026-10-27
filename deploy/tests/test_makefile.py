@@ -31,3 +31,9 @@ def test_gatewayctl_recipes_are_silent(target):
     assert recipe, f"target {target} has no recipe"
     for line in recipe:
         assert line.startswith("@"), f"{target}: make would echo {line!r} to stdout"
+
+
+def test_smoke_target_passes_smoke_key_to_tools():
+    recipe = " ".join(_recipe("smoke"))
+    assert "-e SMOKE_KEY" in recipe
+    assert "pytest" in recipe and "tests/smoke" in recipe

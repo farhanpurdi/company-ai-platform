@@ -14,7 +14,7 @@ GIT_SHA = $(shell git log -1 --format=%H -- $(FILE))
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke
 
 # Image with gatewayctl, pytest and the test dependencies.
 tools-build:
@@ -67,3 +67,9 @@ ctl:
 test:
 	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider $(wildcard tests/integration tests/acceptance) -v
 	@if [ -f scripts/t10-scan-logs.sh ]; then scripts/t10-scan-logs.sh $(ENV); else echo "scripts/t10-scan-logs.sh belum ada; scan log T10 dilewati"; fi
+
+# Smoke T06/T07 through the gateway. SMOKE_KEY is a virtual key from `make ctl
+# ARGS='key issue ...'`; give it as `make smoke SMOKE_KEY=...` (make exports it)
+# or in the environment. Intended for ENV=vm (real OpenAI).
+smoke:
+	$(COMPOSE) run --rm -T -e SMOKE_KEY tools pytest -p no:cacheprovider tests/smoke -v
