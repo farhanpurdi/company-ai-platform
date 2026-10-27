@@ -37,7 +37,10 @@
 	tls internal
 	import access_log
 
-	@inference path /v1/chat/completions /v1/models /health/liveliness
+	# Exact match on the request path as LiteLLM will route it. The `path`
+	# matcher cleans dot segments first while reverse_proxy forwards the raw
+	# path, so `/openai/x/../../v1/models` would reach non-allowlisted routes.
+	@inference expression `{http.request.uri.path} in ["/v1/chat/completions", "/v1/models", "/health/liveliness"]`
 	handle @inference {
 		import litellm_upstream
 	}

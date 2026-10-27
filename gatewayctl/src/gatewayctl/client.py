@@ -13,7 +13,23 @@ _RAW_KEY = re.compile(r"sk-[A-Za-z0-9_-]{6,}")
 
 
 class GatewayUnavailable(Exception):
-    """LiteLLM is unreachable or rejected the master key."""
+    """LiteLLM is unreachable or rejected the master key.
+
+    may_have_applied is True when the request may already have reached LiteLLM
+    (e.g. a read timeout), so a mutating call cannot be assumed to have failed.
+    """
+
+    def __init__(self, message: str, *, may_have_applied: bool = False) -> None:
+        super().__init__(message)
+        self.may_have_applied = may_have_applied
+
+
+# Raised before the request is written, so the server never saw it.
+_NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.UnsupportedProtocol)
+
+
+def _invalid_url() -> GatewayUnavailable:
+    return GatewayUnavailable("URL LiteLLM tidak valid; periksa --base-url atau LITELLM_BASE_URL")
 
 
 class ApiError(Exception):
@@ -41,12 +57,15 @@ class LiteLLMClient:
         timeout: float = 30.0,
     ):
         self._master_key = master_key
-        self._http = httpx.Client(
-            base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {master_key}"},
-            transport=transport,
-            timeout=timeout,
-        )
+        try:
+            self._http = httpx.Client(
+                base_url=base_url.rstrip("/"),
+                headers={"Authorization": f"Bearer {master_key}"},
+                transport=transport,
+                timeout=timeout,
+            )
+        except httpx.InvalidURL:
+            raise _invalid_url() from None
 
     def close(self) -> None:
         self._http.close()
@@ -63,9 +82,14 @@ class LiteLLMClient:
     def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:
             response = self._http.request(method, path, **kwargs)
+        except httpx.InvalidURL:
+            raise _invalid_url() from None
         except httpx.TransportError as exc:
             # Only the exception class: its text may echo URLs or headers.
-            raise GatewayUnavailable(f"tidak dapat menghubungi LiteLLM ({type(exc).__name__})") from None
+            raise GatewayUnavailable(
+                f"tidak dapat menghubungi LiteLLM ({type(exc).__name__})",
+                may_have_applied=not isinstance(exc, _NOT_SENT),
+            ) from None
         if response.status_code >= 400:
             raise ApiError(response.status_code, path, self._redact(response.text))
         return response

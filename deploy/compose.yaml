@@ -108,6 +108,9 @@ services:
     build:
       context: ..
       dockerfile: tools/Dockerfile
+    # Host user (exported by the Makefile) so files written to the checkout stay
+    # host-owned; 0 when compose is run by hand.
+    user: "${HOST_UID:-0}:${HOST_GID:-0}"
     working_dir: /repo
     volumes:
       - ..:/repo

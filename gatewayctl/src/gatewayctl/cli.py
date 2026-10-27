@@ -10,11 +10,11 @@ from typing import NoReturn
 
 import typer
 
-from gatewayctl.apply import ApplyError, execute
+from gatewayctl.apply import ApplyError, AuditWriteError, execute
 from gatewayctl.audit import AuditLog
 from gatewayctl.client import ApiError, GatewayUnavailable, LiteLLMClient, redact
 from gatewayctl.diff import ConflictError, Plan, diff
-from gatewayctl.keys import block_keys, issue_key, key_rows
+from gatewayctl.keys import BlockError, block_keys, issue_key, key_rows
 from gatewayctl.model import ActualState, DesiredState
 from gatewayctl.schema import EntitlementsError, load_entitlements, load_gateway_config, normalize_id
 from gatewayctl.state import fetch_actual
@@ -99,8 +99,24 @@ def _audit(operator: str) -> AuditLog:
     return audit
 
 
-def _audit_failed(audit: AuditLog, exc: OSError) -> NoReturn:
-    fail(f"audit log gagal ditulis ({audit.path}): {exc.strerror or type(exc).__name__}")
+def _block_failed(audit: AuditLog, exc: BlockError) -> NoReturn:
+    cause = exc.cause
+    done = f"{len(exc.blocked)} key sebelumnya sudah diblokir dan tercatat di audit"
+    if exc.applied:
+        reason = cause.strerror if isinstance(cause, OSError) else None
+        fail(
+            f"{exc.target} sudah diblokir di LiteLLM tetapi audit log gagal ditulis ({audit.path}): "
+            f"{reason or type(cause).__name__}. {done}."
+        )
+    if isinstance(cause, GatewayUnavailable):
+        if not exc.blocked and not cause.may_have_applied:
+            fail(str(cause), EXIT_UNAVAILABLE)
+        fail(
+            f"{cause} saat memblokir {exc.target}; key itu mungkin sudah diblokir. "
+            f"{done}. Jalankan perintah lagi lalu periksa dengan gatewayctl key list."
+        )
+    detail = f"LiteLLM menolak permintaan: {cause}" if isinstance(cause, ApiError) else str(cause)
+    fail(f"Gagal memblokir {exc.target}: {detail}. {done}. Jalankan perintah lagi setelah diperbaiki.")
 
 
 def _master_key() -> str:
@@ -111,8 +127,8 @@ def _master_key() -> str:
 
 
 def _connect(settings: Settings, master_key: str):
-    client = make_client(settings.base_url, master_key)
     try:
+        client = make_client(settings.base_url, master_key)
         client.check()
     except GatewayUnavailable as exc:
         fail(str(exc), EXIT_UNAVAILABLE)
@@ -171,6 +187,13 @@ def _print_plan(plan: Plan) -> None:
         say("Team yatim (ada di LiteLLM, tidak ada di file; proses dengan --prune):")
         for team_id in plan.orphan_teams:
             say(f"  team:{team_id}")
+    if plan.unmanaged_active_revoked:
+        say(
+            "PERINGATAN: key unmanaged milik member/team yang dicabut tetap aktif "
+            "(tidak diblokir otomatis); blokir dengan: gatewayctl key block --alias <alias>"
+        )
+        for target in plan.unmanaged_active_revoked:
+            say(f"  {target}")
     destructive = sum(1 for a in plan.actions if a.destructive)
     say(
         f"Ringkasan: {len(plan.actions)} aksi ({destructive} destruktif), "
@@ -193,6 +216,7 @@ def _plan_json(plan: Plan) -> str:
             ],
             "unmanaged": list(plan.unmanaged),
             "orphan_teams": list(plan.orphan_teams),
+            "unmanaged_active_revoked": list(plan.unmanaged_active_revoked),
         },
         indent=2,
     )
@@ -239,8 +263,12 @@ def apply_command(
     audit = _audit(operator)
     try:
         done = execute(plan, client, audit)
-    except OSError as exc:
-        _audit_failed(audit, exc)
+    except AuditWriteError as exc:
+        fail(
+            f"{exc.action.kind} {exc.action.target} sudah diterapkan di LiteLLM tetapi audit log gagal "
+            f"ditulis ({audit.path}): {exc.cause.strerror or type(exc.cause).__name__}. "
+            f"{exc.done} aksi sebelumnya tercatat di audit; catat aksi ini secara manual."
+        )
     except ApplyError as exc:
         cause = redact(str(exc.cause), [master_key])
         fail(
@@ -258,27 +286,37 @@ def key_issue(
 ) -> None:
     """Terbitkan key; key mentah dicetak sekali ke stdout."""
     settings: Settings = ctx.obj
+    user = (user or "").strip()
+    label = (label or "").strip()
     if not user or not label:
         fail("--user dan --label wajib diisi")
+    if any(c.isspace() for c in label):
+        fail("--label tidak boleh berisi spasi")
     desired = _load_desired(settings)
     operator = _require_operator()
     master_key = _master_key()
     client, actual = _connect_and_fetch(settings, master_key)
     owner = normalize_id(user)
+    alias = f"{owner}-{label}"
     audit = _audit(operator)
     try:
-        raw = issue_key(desired, actual, client, audit, owner, label.strip())
+        raw = issue_key(desired, actual, client, audit, owner, label)
     except ValueError as exc:
         fail(str(exc))
     except OSError as exc:
-        alias = f"{owner}-{label.strip()}"
         fail(
             f"key '{alias}' sudah dibuat di LiteLLM tetapi audit log gagal ditulis "
             f"({exc.strerror or type(exc).__name__}); key mentah tidak ditampilkan, "
             f"blokir dengan: gatewayctl key block --alias {alias}"
         )
     except GatewayUnavailable as exc:
-        fail(str(exc), EXIT_UNAVAILABLE)
+        if not exc.may_have_applied:
+            fail(str(exc), EXIT_UNAVAILABLE)
+        fail(
+            f"{exc}; key '{alias}' mungkin sudah dibuat di LiteLLM tanpa catatan audit. "
+            f"Periksa dengan: gatewayctl key list --user {owner}; bila ada, "
+            f"blokir dengan: gatewayctl key block --alias {alias}"
+        )
     except ApiError as exc:
         fail(f"LiteLLM menolak permintaan: {exc}")
     typer.echo(raw)
@@ -306,12 +344,8 @@ def key_block(
             user_id=normalize_id(user) if user is not None else None,
             alias=alias,
         )
-    except OSError as exc:
-        _audit_failed(audit, exc)
-    except GatewayUnavailable as exc:
-        fail(str(exc), EXIT_UNAVAILABLE)
-    except ApiError as exc:
-        fail(f"LiteLLM menolak permintaan: {exc}")
+    except BlockError as exc:
+        _block_failed(audit, exc)
     if not blocked:
         fail("tidak ada key aktif yang cocok")
     say(f"{len(blocked)} key diblokir.")

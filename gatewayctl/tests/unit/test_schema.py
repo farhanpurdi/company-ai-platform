@@ -876,3 +876,22 @@ def test_non_utf8_file_is_entitlements_error(tmp_path, config):
     with pytest.raises(EntitlementsError) as exc:
         load_entitlements(path, config)
     assert exc.value.path == str(path) and "UTF-8" in exc.value.message
+
+
+def test_repo_entitlements_load_with_placeholders_uncommented(tmp_path):
+    # The pilot.yaml header says members are added by uncommenting a line.
+    repo = Path(__file__).resolve().parents[3]
+    gateway = load_gateway_config(repo / "deploy" / "litellm" / "config.yaml")
+    for name in ("local.yaml", "pilot.yaml"):
+        load_entitlements(repo / "entitlements" / name, gateway)
+    text = (repo / "entitlements" / "pilot.yaml").read_text(encoding="utf-8")
+    uncommented = text.replace("# - nama.depan@perusahaan.com", "- nama.depan@perusahaan.com", 1)
+    uncommented = uncommented.replace(
+        "# - nama.depan@perusahaan.com", "- nama.belakang@perusahaan.com", 1
+    )
+    assert uncommented.count("nama.") == 2
+    path = tmp_path / "pilot.yaml"
+    path.write_text(uncommented, encoding="utf-8")
+    desired = load_entitlements(path, gateway)
+    assert desired.members["nama.depan@perusahaan.com"].team_id == "it-developer"
+    assert desired.members["nama.belakang@perusahaan.com"].team_id == "finance"

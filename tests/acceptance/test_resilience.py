@@ -35,6 +35,10 @@ def test_t09_fallback_before_stream(applied, mock):
     print(f"T09 before-stream upstream={models}")
     assert r.status_code == 200, r.text
     assert "mock-4" in r.text
+    # Sol was really tried (and failed) before the fallback to Terra answered.
+    assert TERRA in models, models
+    first_terra = models.index(TERRA)
+    assert first_terra >= 1 and all(m == SOL for m in models[:first_terra]), models
     assert models[-1] == TERRA
 
 

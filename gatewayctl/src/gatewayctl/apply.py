@@ -20,6 +20,16 @@ class ApplyError(Exception):
         self.cause = cause
 
 
+class AuditWriteError(Exception):
+    """An action was applied in LiteLLM but its audit line could not be written."""
+
+    def __init__(self, done: int, action: Action, cause: OSError) -> None:
+        super().__init__(f"aksi {action.kind} {action.target} diterapkan tetapi audit gagal ditulis: {cause}")
+        self.done = done
+        self.action = action
+        self.cause = cause
+
+
 def budget_limits(budgets: list[Mapping]) -> list[dict]:
     return [{"budget_duration": b["duration"], "max_budget": b["max_usd"]} for b in budgets]
 
@@ -75,6 +85,9 @@ def execute(plan: Plan, client: LiteLLMClient, audit: AuditLog) -> int:
             _call(action, client)
         except Exception as exc:
             raise ApplyError(done, action, exc) from exc
-        audit.record(action.kind, action.target, action.before, action.after)
+        try:
+            audit.record(action.kind, action.target, action.before, action.after)
+        except OSError as exc:
+            raise AuditWriteError(done, action, exc) from exc
         done += 1
     return done

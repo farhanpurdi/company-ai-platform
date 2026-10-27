@@ -137,3 +137,29 @@ def test_execute_stops_on_first_failure(audit):
 def test_empty_plan_is_noop(audit):
     assert execute(plan_of(), RecordingClient(), audit) == 0
     assert not audit.path.exists()
+
+
+def test_audit_failure_after_call_names_the_applied_action(audit, monkeypatch):
+    from gatewayctl.apply import AuditWriteError
+
+    member = {"team_id": "dev", "user_id": "a@x.com", "max_budget_in_team": 1.0}
+    plan = plan_of(
+        Action("create_team", "team:dev", None, TEAM, False),
+        Action("add_member", "member:dev/a@x.com", None, member, False),
+    )
+    real_record = AuditLog.record
+    calls = []
+
+    def flaky(self, *args):
+        calls.append(args)
+        if len(calls) == 2:
+            raise OSError(28, "No space left on device")
+        real_record(self, *args)
+
+    monkeypatch.setattr(AuditLog, "record", flaky)
+    client = RecordingClient()
+    with pytest.raises(AuditWriteError) as info:
+        execute(plan, client, audit)
+    assert info.value.done == 1
+    assert info.value.action == plan.actions[1]
+    assert client.names == ["team_new", "member_add"]

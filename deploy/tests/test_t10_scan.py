@@ -1,7 +1,8 @@
 """scripts/t10-scan-logs.sh against a stub `docker`, so it runs without a stack.
 
-The stub answers `compose logs <service>` from logs-<service> files and the
-psql COPY of LiteLLM_SpendLogs from spendlogs. Values below are fakes.
+The stub answers `compose logs <service>` from logs-<service> files, the psql
+row count of the T10 key from spendrows and the psql COPY of LiteLLM_SpendLogs
+from spendlogs. Values below are fakes.
 """
 
 import os
@@ -23,6 +24,7 @@ VKEY = "sk-fakevirtualkey9876543"
 STUB_DOCKER = """#!/bin/sh
 for arg; do last="$arg"; done
 case "$*" in
+  *psql*" -At "*) cat "$STUB_DIR/spendrows" ;;
   *psql*) cat "$STUB_DIR/spendlogs" ;;
   *" logs "*) cat "$STUB_DIR/logs-$last" 2>/dev/null || true ;;
   *) echo "stub docker: unexpected $*" >&2; exit 9 ;;
@@ -47,7 +49,9 @@ def repo(tmp_path):
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
     for svc in SERVICES:
         (stub / f"logs-{svc}").write_text(f'{svc}-1  | {{"level": "INFO", "message": "ok"}}\n')
+    (stub / "logs-caddy").write_text('caddy-1  | {"request": {"uri":"/v1/chat/completions"}}\n')
     (stub / "spendlogs").write_text("req-1\tcompany-fast\t0.01\n")
+    (stub / "spendrows").write_text("2\n")
     return tmp_path
 
 
@@ -56,6 +60,7 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
         **os.environ,
         "PATH": f"{repo / 'stub' / 'bin'}:{os.environ['PATH']}",
         "STUB_DIR": str(repo / "stub"),
+        "T10_SPEND_WAIT_S": "0",
     }
     return subprocess.run(
         ["sh", str(repo / "scripts" / SCRIPT.name), "local"],
@@ -120,3 +125,20 @@ def test_missing_secret_in_env_file_fails(repo):
     assert result.returncode == 1
     assert "OPENAI_API_KEY" in result.stderr
     _assert_no_values(result)
+
+
+def test_t10_traffic_missing_from_spend_log_fails(repo):
+    (repo / "stub" / "spendrows").write_text("1\n")
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "LiteLLM_SpendLogs" in result.stderr
+    assert "T10 clean" not in result.stdout
+    _assert_no_values(result)
+
+
+def test_caddy_access_log_without_inference_request_fails(repo):
+    (repo / "stub" / "logs-caddy").write_text('caddy-1  | {"level": "INFO"}\n')
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "Caddy" in result.stderr
+    assert "T10 clean" not in result.stdout

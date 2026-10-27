@@ -15,6 +15,9 @@ from pydantic import BaseModel
 DEFAULT_USAGE = {"prompt_tokens": 1000, "completion_tokens": 500}
 MODELS = ["gpt-5.6-terra", "gpt-5.6-sol"]
 STREAM_CHUNKS = 5
+# Paces stream chunks like real token output, so a client can tell an
+# incremental stream from a buffered one.
+STREAM_CHUNK_INTERVAL_S = 0.02
 
 Mode = Literal[
     "ok", "error_429", "error_500", "fail_before_stream", "fail_mid_stream", "slow"
@@ -223,6 +226,8 @@ async def _stream(
         }
         if last:
             chunk["usage"] = usage
+        if i:
+            await asyncio.sleep(STREAM_CHUNK_INTERVAL_S)
         yield _sse(chunk)
     yield "data: [DONE]\n\n"
 

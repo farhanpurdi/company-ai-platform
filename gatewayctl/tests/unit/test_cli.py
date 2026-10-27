@@ -162,7 +162,12 @@ def test_plan_json(runner, files, desired, backend):
     result = run(runner, files, "plan", "--json")
     assert result.exit_code == 0
     data = json.loads(result.stderr)
-    assert data == {"actions": [], "unmanaged": ["team:legacy-x"], "orphan_teams": []}
+    assert data == {
+        "actions": [],
+        "unmanaged": ["team:legacy-x"],
+        "orphan_teams": [],
+        "unmanaged_active_revoked": [],
+    }
 
 
 def test_plan_json_action_shape(runner, files, backend):
@@ -621,3 +626,132 @@ def test_key_issue_audit_failing_after_generate_names_alias_and_hides_key(
     assert_clean_failure(result, 1)
     assert "budi@perusahaan.com-a" in result.stderr
     assert RAW_KEY not in result.stderr
+
+
+# --- Final review fixes ---
+
+
+@pytest.mark.parametrize("label", ["  ", "", "my laptop"])
+def test_key_issue_rejects_blank_or_spaced_label(runner, files, desired, backend, label):
+    backend.client = RecordingClient()
+    backend.actual = synced(desired)
+    result = run(runner, files, "key", "issue", "--user", "budi@perusahaan.com", "--label", label)
+    assert_clean_failure(result, 1)
+    assert backend.client.calls == []
+
+
+def test_key_issue_label_is_trimmed(runner, files, desired, backend):
+    backend.client = RecordingClient()
+    backend.actual = synced(desired)
+    result = run(runner, files, "key", "issue", "--user", "budi@perusahaan.com", "--label", " a ")
+    assert result.exit_code == 0, result.stderr
+    assert backend.client.calls[0][1]["key_alias"] == "budi@perusahaan.com-a"
+
+
+def test_key_issue_read_timeout_is_not_no_change(runner, files, desired, backend):
+    class Slow(RecordingClient):
+        def key_generate(self, payload):
+            raise GatewayUnavailable("tidak dapat menghubungi LiteLLM (ReadTimeout)", may_have_applied=True)
+
+    backend.client = Slow()
+    backend.actual = synced(desired)
+    result = run(runner, files, "key", "issue", "--user", "budi@perusahaan.com", "--label", "a")
+    assert_clean_failure(result, 1)
+    assert "key block --alias budi@perusahaan.com-a" in result.stderr
+
+
+def test_key_issue_connect_error_is_exit_3(runner, files, desired, backend):
+    class Down(RecordingClient):
+        def key_generate(self, payload):
+            raise GatewayUnavailable("tidak dapat menghubungi LiteLLM (ConnectError)")
+
+    backend.client = Down()
+    backend.actual = synced(desired)
+    result = run(runner, files, "key", "issue", "--user", "budi@perusahaan.com", "--label", "a")
+    assert_clean_failure(result, 3)
+
+
+def _blocking_client(fail_on: int, error: Exception):
+    class Flaky(RecordingClient):
+        def key_block(self, token):
+            self.calls.append(("key_block", token))
+            if len(self.calls) == fail_on:
+                raise error
+
+    return Flaky()
+
+
+def test_key_block_unavailable_after_partial_progress_is_exit_1(runner, files, desired, backend):
+    keys = _actual_with_keys(desired).keys
+    second = ActualKey("tok-c", "budi-c", "budi@perusahaan.com", "dev", False, keys[0].policy, True, 0.0)
+    actual = synced(desired)
+    backend.actual = ActualState(actual.teams, actual.managed_teams, actual.members, (keys[0], second))
+    backend.client = _blocking_client(2, GatewayUnavailable("tidak dapat menghubungi LiteLLM (ConnectError)"))
+    result = run(runner, files, "key", "block", "--user", "budi@perusahaan.com")
+    assert_clean_failure(result, 1)
+    assert "1 key sebelumnya sudah diblokir" in result.stderr
+    assert "key:budi-c" in result.stderr
+
+
+def test_key_block_unavailable_before_any_change_is_exit_3(runner, files, desired, backend):
+    backend.actual = _actual_with_keys(desired)
+    backend.client = _blocking_client(1, GatewayUnavailable("tidak dapat menghubungi LiteLLM (ConnectError)"))
+    result = run(runner, files, "key", "block", "--alias", "sari-a")
+    assert_clean_failure(result, 3)
+
+
+def test_key_block_read_timeout_is_exit_1(runner, files, desired, backend):
+    backend.actual = _actual_with_keys(desired)
+    backend.client = _blocking_client(
+        1, GatewayUnavailable("tidak dapat menghubungi LiteLLM (ReadTimeout)", may_have_applied=True)
+    )
+    result = run(runner, files, "key", "block", "--alias", "sari-a")
+    assert_clean_failure(result, 1)
+
+
+def test_key_block_audit_failing_after_block_names_key(runner, files, desired, backend, monkeypatch):
+    backend.client = RecordingClient()
+    backend.actual = _actual_with_keys(desired)
+
+    def full_disk(self, *args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(cli.AuditLog, "record", full_disk)
+    result = run(runner, files, "key", "block", "--alias", "sari-a")
+    assert_clean_failure(result, 1)
+    assert "key:sari-a sudah diblokir" in result.stderr
+
+
+def test_apply_audit_failing_mid_apply_names_applied_action(runner, files, backend, monkeypatch):
+    backend.client = RecordingClient()
+    backend.actual = ActualState({}, frozenset(), (), ())
+
+    def full_disk(self, *args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(cli.AuditLog, "record", full_disk)
+    result = run(runner, files, "apply")
+    assert result.exit_code == 1
+    last = result.stderr.strip().splitlines()[-1]
+    assert "create_team team:dev sudah diterapkan" in last
+    assert "0 aksi sebelumnya" in last
+
+
+def test_invalid_base_url_exit_3_without_traceback(runner, files):
+    result = run(runner, files, "--base-url", "http://[::1", "plan")
+    assert_clean_failure(result, 3)
+    assert "URL LiteLLM tidak valid" in result.stderr
+
+
+def test_plan_warns_about_unmanaged_keys_of_removed_member(runner, files, desired, backend):
+    policy = KeyPolicy(frozenset({"company-fast"}), 60, (BudgetWindow("24h", 10),))
+    stray = ActualKey("tok-x", "gone-ui", "gone@perusahaan.com", "dev", False, policy, False, 0.0)
+    actual = synced(desired)
+    gone = MemberSpec("gone@perusahaan.com", "dev", 100.0)
+    backend.actual = ActualState(actual.teams, actual.managed_teams, (*actual.members, gone), (stray,))
+    result = run(runner, files, "plan")
+    assert result.exit_code == 2
+    assert "PERINGATAN" in result.stderr
+    assert "  key:gone-ui" in result.stderr
+    as_json = run(runner, files, "plan", "--json")
+    assert json.loads(as_json.stderr)["unmanaged_active_revoked"] == ["key:gone-ui"]

@@ -10,6 +10,20 @@ from gatewayctl.client import LiteLLMClient
 from gatewayctl.model import ActualKey, ActualState, DesiredState
 
 
+class BlockError(Exception):
+    """Blocking stopped at one key; `blocked` keys before it were blocked and audited.
+
+    `applied` is True when that key itself was blocked but its audit line failed.
+    """
+
+    def __init__(self, blocked: list[str], target: str, cause: Exception, *, applied: bool) -> None:
+        super().__init__(f"pemblokiran {target} gagal setelah {len(blocked)} key: {cause}")
+        self.blocked = blocked
+        self.target = target
+        self.cause = cause
+        self.applied = applied
+
+
 def _name(key: ActualKey) -> str:
     return key.key_alias or key.token[:8]
 
@@ -74,18 +88,25 @@ def block_keys(
             continue
         if alias is not None and key.key_alias != alias:
             continue
-        client.key_block(key.token)
-        audit.record(
-            "block_key",
-            f"key:{_name(key)}",
-            {
-                "token": key.token,
-                "key_alias": key.key_alias,
-                "user_id": key.user_id,
-                "team_id": key.team_id,
-            },
-            None,
-        )
+        target = f"key:{_name(key)}"
+        try:
+            client.key_block(key.token)
+        except Exception as exc:
+            raise BlockError(blocked, target, exc, applied=False) from exc
+        try:
+            audit.record(
+                "block_key",
+                target,
+                {
+                    "token": key.token,
+                    "key_alias": key.key_alias,
+                    "user_id": key.user_id,
+                    "team_id": key.team_id,
+                },
+                None,
+            )
+        except OSError as exc:
+            raise BlockError(blocked, target, exc, applied=True) from exc
         blocked.append(key.token)
     return blocked
 

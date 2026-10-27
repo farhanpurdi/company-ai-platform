@@ -44,6 +44,9 @@ class Plan:
     actions: tuple[Action, ...]
     unmanaged: tuple[str, ...]
     orphan_teams: tuple[str, ...]
+    # Unmanaged, active keys whose member or team this plan revokes. They are not
+    # blocked (unmanaged resources are never touched) but must be flagged.
+    unmanaged_active_revoked: tuple[str, ...] = ()
 
 
 class ConflictError(Exception):
@@ -128,6 +131,7 @@ def diff(desired: DesiredState, actual: ActualState, *, prune: bool = False) -> 
 
     # Members
     have_members = {(m.team_id, m.user_id): m for m in actual.members}
+    removed_members: set[tuple[str, str]] = set()
     for user_id, want in sorted(desired.members.items()):
         have = have_members.get((want.team_id, user_id))
         after = _member_dict(want)
@@ -145,14 +149,21 @@ def diff(desired: DesiredState, actual: ActualState, *, prune: bool = False) -> 
         # Members of an orphan team stay untouched without prune, unless the user moved elsewhere.
         if team_id in orphans and not prune and want is None:
             continue
+        removed_members.add((team_id, user_id))
         actions.append(
             Action("remove_member", f"member:{team_id}/{user_id}", _member_dict(have), None, True)
         )
 
     # Keys
+    revoked_unmanaged: list[str] = []
     for key in actual.keys:
         if not key.managed:
             unmanaged.append(f"key:{_key_name(key)}")
+            if not key.blocked and (
+                (key.team_id, key.user_id) in removed_members
+                or (prune and key.team_id in orphans)
+            ):
+                revoked_unmanaged.append(f"key:{_key_name(key)}")
             continue
         if key.blocked:
             continue
@@ -184,4 +195,9 @@ def diff(desired: DesiredState, actual: ActualState, *, prune: bool = False) -> 
             )
 
     actions.sort(key=lambda a: (_ORDER[a.kind], a.target))
-    return Plan(tuple(actions), tuple(sorted(unmanaged)), tuple(orphan_teams))
+    return Plan(
+        tuple(actions),
+        tuple(sorted(unmanaged)),
+        tuple(orphan_teams),
+        tuple(sorted(revoked_unmanaged)),
+    )

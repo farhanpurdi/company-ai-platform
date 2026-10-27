@@ -6,10 +6,15 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 import yaml
 from gatewayctl.client import ApiError
 
 from helpers import LOCAL_ENTITLEMENTS, admin, chat, gateway, issue_key, run_ctl
+
+# Spec 8.1: the mock is reset before every test, so no scenario left by an
+# earlier (interrupted) run can change the traffic these tests send.
+pytestmark = pytest.mark.usefixtures("mock")
 
 REVOCATION_TIMEOUT_S = 300
 POLL_INTERVAL_S = 5

@@ -33,7 +33,7 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
    mkdir -p var && $SPEND 2>/dev/null > var/spend-before.json
    ```
 
-2. `make smoke ENV=vm SMOKE_KEY="$SMOKE_KEY"`. Harapan: 4 test PASS (stream >= 5 chunk dengan token pertama < 30 detik; tool call `get_current_time` di `company-coding` dan `company-reasoning`).
+2. `SMOKE_KEY="$SMOKE_KEY" make smoke ENV=vm`. Key diberikan lewat environment, bukan sebagai argumen `make`, agar tidak terlihat di daftar proses (`ps`). Harapan: 4 test PASS (stream >= 5 chunk, token pertama < 30 detik, dan token tiba bertahap; tool call `get_current_time` di `company-coding` dan `company-reasoning`).
 3. Catat hasil di bagian 6.
 
 ## 4. Manual (T06, T07)

@@ -44,7 +44,8 @@ def _settled_spend(key: str, expected_min: float) -> float:
     """Read key spend every SPEND_POLL_S until two consecutive reads agree.
 
     A read below expected_min (spend of the requests the mock already answered)
-    means the spend writer has not flushed yet, so it never counts as settled.
+    means the spend writer has not flushed yet, so it never counts as settled;
+    if it never settles the test fails rather than report a low overshoot.
     """
     deadline = time.monotonic() + SPEND_WAIT_S
     previous = None
@@ -53,7 +54,10 @@ def _settled_spend(key: str, expected_min: float) -> float:
         if spend == previous and spend >= expected_min - 1e-9:
             return spend
         if time.monotonic() >= deadline:
-            return spend
+            raise AssertionError(
+                f"spend key belum stabil setelah {SPEND_WAIT_S:.0f} detik: "
+                f"terbaca {spend:.4f}, minimal {expected_min:.4f}"
+            )
         previous = spend
         time.sleep(SPEND_POLL_S)
 
@@ -63,7 +67,9 @@ def test_t03_parallel_overshoot_within_tolerance(applied, mock, capsys):
     with gateway(key) as client, ThreadPoolExecutor(max_workers=T03_PARALLEL) as pool:
         responses = list(pool.map(lambda _: chat(client, "company-fast"), range(T03_PARALLEL)))
     upstream = len(mock.requests())
-    spend = _settled_spend(key, upstream * REQUEST_COST_USD)
+    upstream_cost = upstream * REQUEST_COST_USD
+    # The mock knows the true cost; recorded spend can only lag behind it.
+    spend = max(_settled_spend(key, upstream_cost), upstream_cost)
     overshoot = (spend - T03_LIMIT_USD) / T03_LIMIT_USD
     ok = sum(r.status_code == 200 for r in responses)
     # Shown even when the test passes: the numbers are recorded for Gate 2.
@@ -75,4 +81,8 @@ def test_t03_parallel_overshoot_within_tolerance(applied, mock, capsys):
     # Any rejection other than the budget check would make the overshoot meaningless.
     rejected = [r for r in responses if r.status_code != 200]
     assert all("budget_exceeded" in r.text for r in rejected), [r.status_code for r in rejected]
+    # All rejected would pass trivially (e.g. team budget used up before the run).
+    # Stopping below the limit is allowed: the pinned LiteLLM counts in-flight
+    # requests against the window budget and may reject early.
+    assert ok >= 1 and upstream >= 1, "tidak ada request yang lolos; budget sudah habis sebelum uji?"
     assert overshoot <= T03_TOLERANCE

@@ -31,5 +31,6 @@ teams:
       key:
         rpm_limit: 30
         budgets: [{ duration: 24h, max_usd: 3 }, { duration: 30d, max_usd: 30 }]
-    members: []
+    # Kosong (null) dihitung sebagai daftar kosong.
+    members:
       # - nama.depan@perusahaan.com

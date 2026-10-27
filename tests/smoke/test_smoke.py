@@ -17,6 +17,8 @@ from helpers import chat, gateway
 MODELS = ["company-coding", "company-reasoning"]
 MIN_CHUNKS = 5
 MAX_FIRST_TOKEN_SECONDS = 30
+# A buffered response hands every chunk to the client in one read (spread ~0 s).
+MIN_STREAM_SPREAD_SECONDS = 0.05
 TIME_TOOL = {
     "type": "function",
     "function": {
@@ -37,15 +39,15 @@ def smoke_key() -> str:
     return key
 
 
-def _stream_chunks(key: str, model: str) -> tuple[list[dict], float]:
-    """Content-bearing chunks of a streamed answer and the seconds until the first one."""
+def _stream_chunks(key: str, model: str) -> tuple[list[dict], list[float]]:
+    """Content-bearing chunks of a streamed answer and when each arrived (s from start)."""
     body = {
         "model": model,
         "stream": True,
         "messages": [{"role": "user", "content": "count from 1 to 20"}],
     }
     chunks: list[dict] = []
-    first: float | None = None
+    arrivals: list[float] = []
     started = time.monotonic()
     with gateway(key) as client, client.stream("POST", "/v1/chat/completions", json=body) as r:
         assert r.status_code == 200, r.read().decode()[:300]
@@ -55,25 +57,35 @@ def _stream_chunks(key: str, model: str) -> tuple[list[dict], float]:
             chunk = json.loads(line[len("data:") :])
             choices = chunk.get("choices") or []
             if choices and (choices[0].get("delta") or {}).get("content"):
-                if first is None:
-                    first = time.monotonic() - started
+                arrivals.append(time.monotonic() - started)
                 chunks.append(chunk)
-    assert first is not None, "stream tidak berisi token"
-    return chunks, first
+    assert arrivals, "stream tidak berisi token"
+    return chunks, arrivals
 
 
 @pytest.mark.parametrize("model", MODELS)
 def test_t06_streaming(smoke_key, model):
-    chunks, first_token_seconds = _stream_chunks(smoke_key, model)
-    print(f"T06 {model} chunks={len(chunks)} first_token={first_token_seconds:.1f}s")
+    chunks, arrivals = _stream_chunks(smoke_key, model)
+    spread = arrivals[-1] - arrivals[0]
+    print(f"T06 {model} chunks={len(chunks)} first_token={arrivals[0]:.1f}s spread={spread:.2f}s")
     assert len(chunks) >= MIN_CHUNKS
-    assert first_token_seconds < MAX_FIRST_TOKEN_SECONDS
+    assert arrivals[0] < MAX_FIRST_TOKEN_SECONDS
+    # Tokens must arrive bit by bit, not all at once at the end.
+    assert spread >= MIN_STREAM_SPREAD_SECONDS, f"semua token tiba sekaligus (rentang {spread:.3f} detik)"
 
 
 @pytest.mark.parametrize("model", MODELS)
 def test_t07_tool_calling(smoke_key, model):
     with gateway(smoke_key) as client:
-        r = chat(client, model, tools=[TIME_TOOL], prompt="What time is it? Use the tool.")
+        r = chat(
+            client,
+            model,
+            tools=[TIME_TOOL],
+            # Forced, so a real model cannot answer in text instead.
+            tool_choice={"type": "function", "function": {"name": "get_current_time"}},
+            prompt="What time is it? Use the tool.",
+        )
     assert r.status_code == 200, r.text[:300]
-    tool_calls = r.json()["choices"][0]["message"]["tool_calls"]
+    tool_calls = r.json()["choices"][0]["message"].get("tool_calls")
+    assert tool_calls, f"tidak ada tool call: {r.text[:300]}"
     assert tool_calls[0]["function"]["name"] == "get_current_time"

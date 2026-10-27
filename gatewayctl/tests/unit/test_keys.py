@@ -170,3 +170,31 @@ def test_key_rows_filters_and_columns():
     ]
     assert [r["key_alias"] for r in key_rows(state(*keys), user_id="u2")] == ["b"]
     assert [r["key_alias"] for r in key_rows(state(*keys), team_id="dev")] == ["a"]
+
+
+def test_block_failure_reports_keys_already_blocked(audit):
+    from gatewayctl.keys import BlockError
+
+    keys = (akey("budi-a", "budi@perusahaan.com", "tok-a"), akey("budi-b", "budi@perusahaan.com", "tok-b"))
+    client = RecordingClient(fail_on_call=2)
+    with pytest.raises(BlockError) as info:
+        block_keys(state(*keys), client, audit, user_id="budi@perusahaan.com")
+    assert info.value.blocked == ["tok-a"]
+    assert info.value.target == "key:budi-b"
+    assert info.value.applied is False
+    assert len(audit.path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_block_audit_failure_marks_key_as_applied(audit, monkeypatch):
+    from gatewayctl.keys import BlockError
+
+    def full_disk(self, *args):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(AuditLog, "record", full_disk)
+    client = RecordingClient()
+    with pytest.raises(BlockError) as info:
+        block_keys(state(akey("budi-a", "budi@perusahaan.com", "tok-a")), client, audit, alias="budi-a")
+    assert info.value.applied is True
+    assert info.value.blocked == []
+    assert client.calls == [("key_block", "tok-a")]

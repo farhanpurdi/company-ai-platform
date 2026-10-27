@@ -57,3 +57,15 @@ def test_every_site_uses_access_log_snippet(caddyfile):
     sites = re.findall(r"^\{\$LLM(?:_ADMIN)?_HOST\} \{", text, re.M)
     assert len(sites) == 2
     assert text.count("import access_log") == len(sites)
+
+
+@pytest.mark.parametrize("caddyfile", CADDYFILES, ids=lambda p: p.name)
+def test_inference_allowlist_matches_raw_path(caddyfile):
+    # The `path` matcher cleans `..` segments while reverse_proxy forwards the raw
+    # path; the allowlist must compare the raw path exactly (spec 4.2).
+    text = caddyfile.read_text(encoding="utf-8")
+    assert "@inference path " not in text
+    assert (
+        '@inference expression `{http.request.uri.path} in ["/v1/chat/completions", '
+        '"/v1/models", "/health/liveliness"]`'
+    ) in text

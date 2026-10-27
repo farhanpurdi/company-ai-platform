@@ -171,3 +171,26 @@ def test_transport_error_on_other_calls_is_unavailable(router, client):
     router.get("/team/list").mock(side_effect=httpx.ReadTimeout("slow"))
     with pytest.raises(GatewayUnavailable):
         client.list_teams()
+
+
+@pytest.mark.parametrize(
+    ("error", "may_have_applied"),
+    [
+        (httpx.ConnectError("refused"), False),
+        (httpx.ConnectTimeout("slow"), False),
+        (httpx.ReadTimeout("slow"), True),
+        (httpx.RemoteProtocolError("dropped"), True),
+    ],
+)
+def test_unavailable_says_whether_request_may_have_applied(router, client, error, may_have_applied):
+    router.post("/key/generate").mock(side_effect=error)
+    with pytest.raises(GatewayUnavailable) as info:
+        client.key_generate({})
+    assert info.value.may_have_applied is may_have_applied
+
+
+def test_invalid_base_url_is_unavailable_without_secret():
+    with pytest.raises(GatewayUnavailable) as info:
+        LiteLLMClient("http://[::1", MASTER).check()
+    assert MASTER not in str(info.value)
+    assert "URL" in str(info.value)

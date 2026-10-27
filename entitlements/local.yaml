@@ -29,12 +29,14 @@ teams:
     members:
       - fin1@local.test
 
-  # Small limits for T02 (budget exhausted), T03 (parallel overshoot) and T04 (rpm).
+  # Small key limits for T02 (budget exhausted), T03 (parallel overshoot) and T04 (rpm).
   # One mock request = 1000 input tokens + 500 output tokens on Terra = $0.01.
+  # Team spend survives `make down` and grows ~$0.25 per `make test`; the team
+  # budget stays far above that so only the key limits ever trigger.
   qa-limits:
     alias: "QA Limits (uji)"
     models: [company-fast]
-    budget: { max_usd: 10, duration: 30d }
+    budget: { max_usd: 10000, duration: 30d }
     rpm_limit: 600
     members:
       - user_id: budget1@local.test

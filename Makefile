@@ -9,21 +9,28 @@ FILE_local := entitlements/local.yaml
 FILE_vm := entitlements/pilot.yaml
 FILE ?= $(FILE_$(ENV))
 OPERATOR ?= $(shell git config user.email)
-GIT_SHA = $(shell git log -1 --format=%H -- $(FILE))
+# Last commit of FILE; "-dirty" when the applied file differs from that commit.
+GIT_SHA = $(shell sha=$$(git log -1 --format=%H -- $(FILE)); \
+	if [ -n "$$(git status --porcelain -- $(FILE))" ]; then echo "$${sha:-untracked}-dirty"; else echo "$$sha"; fi)
+
+# The tools container runs as the host user (compose.yaml), so files it writes
+# to the checkout (var/audit.log, var/t10-sentinels.txt) stay host-owned.
+export HOST_UID := $(shell id -u)
+export HOST_GID := $(shell id -g)
 
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl local-ca test smoke
 
 # Image with gatewayctl, pytest and the test dependencies.
 tools-build:
 	docker build -f tools/Dockerfile -t $(TOOLS_IMAGE) .
 
-# Unit tests need no stack; the repo is mounted at /repo. No pytest cache: the
-# container runs as root and would leave root-owned files in the checkout.
+# Unit tests need no stack; the repo is mounted at /repo. No pytest cache: it
+# would only add clutter to the checkout.
 unit: tools-build
-	docker run --rm -v "$(CURDIR):/repo" -w /repo $(TOOLS_IMAGE) pytest -p no:cacheprovider gatewayctl/tests mock_upstream/tests deploy/tests -q
+	docker run --rm --user $(HOST_UID):$(HOST_GID) -v "$(CURDIR):/repo" -w /repo $(TOOLS_IMAGE) pytest -p no:cacheprovider gatewayctl/tests mock_upstream/tests deploy/tests -q
 
 # Random local secrets; refuses to overwrite an existing deploy/env/local.env.
 init-local:
@@ -62,14 +69,25 @@ apply:
 ctl:
 	@$(CTL) $(ARGS)
 
-# Needs the local stack (make up). Test dirs that do not exist yet are skipped;
-# the T10 log scan runs once scripts/t10-scan-logs.sh exists.
-test:
-	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider $(wildcard tests/integration tests/acceptance) -v
-	@if [ -f scripts/t10-scan-logs.sh ]; then scripts/t10-scan-logs.sh $(ENV); else echo "scripts/t10-scan-logs.sh belum ada; scan log T10 dilewati"; fi
+# Local profile: Caddy's internal CA sits in a root-only volume the tools
+# container (host user) cannot read; the certificate is public, so copy it out.
+LOCAL_CA := var/caddy-local-root.crt
+local-ca:
+ifeq ($(ENV),local)
+	@mkdir -p var
+	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(LOCAL_CA).tmp
+	@mv $(LOCAL_CA).tmp $(LOCAL_CA)
+endif
+
+# Unit, then integration and acceptance against the local stack (make up),
+# then the T10 log scan on the host.
+test: unit local-ca
+	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider tests/integration tests/acceptance -v
+	scripts/t10-scan-logs.sh $(ENV)
 
 # Smoke T06/T07 through the gateway. SMOKE_KEY is a virtual key from `make ctl
-# ARGS='key issue ...'`; give it as `make smoke SMOKE_KEY=...` (make exports it)
-# or in the environment. Intended for ENV=vm (real OpenAI).
-smoke:
+# ARGS='key issue ...'`, read from the environment: `SMOKE_KEY="$$SMOKE_KEY" make
+# smoke ENV=vm`. Never pass it as a make argument: argv is visible in `ps`.
+# Intended for ENV=vm (real OpenAI).
+smoke: local-ca
 	$(COMPOSE) run --rm -T -e SMOKE_KEY tools pytest -p no:cacheprovider tests/smoke -v

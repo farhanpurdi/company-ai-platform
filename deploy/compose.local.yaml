@@ -23,7 +23,6 @@ services:
       - path: env/local.env
         required: false
     environment:
-      GATEWAY_CA_BUNDLE: /caddy-data/caddy/pki/authorities/local/root.crt
+      # Copied out of the root-only caddy-data volume by `make local-ca`.
+      GATEWAY_CA_BUNDLE: /repo/var/caddy-local-root.crt
       MOCK_URL: http://mock-upstream:8080
-    volumes:
-      - caddy-data:/caddy-data:ro

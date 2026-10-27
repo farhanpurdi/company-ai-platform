@@ -362,3 +362,33 @@ def test_action_is_frozen():
     act = Action("create_team", "team:x", None, {}, False)
     with pytest.raises(AttributeError):
         act.kind = "delete_team"  # type: ignore[misc]
+
+
+def test_unmanaged_key_of_removed_member_is_flagged_not_blocked():
+    want, have = world()
+    stray = key("budi@x.com-ui", "budi@x.com", managed=False)
+    other = key("legacy", "someone@x.com", managed=False)
+    have = actual([team()], have.members, list(have.keys) + [stray, other])
+    want = desired([team()], [member("sari@x.com")])
+    plan = diff(want, have)
+    assert [a.target for a in by_kind(plan, "block_key")] == ["key:budi@x.com-laptop"]
+    assert plan.unmanaged == ("key:budi@x.com-ui", "key:legacy")
+    assert plan.unmanaged_active_revoked == ("key:budi@x.com-ui",)
+
+
+def test_unmanaged_key_flag_skips_blocked_and_kept_members():
+    want, have = world()
+    blocked = key("budi@x.com-ui", "budi@x.com", managed=False, blocked=True)
+    kept = key("sari@x.com-ui", "sari@x.com", managed=False)
+    have = actual([team()], have.members, list(have.keys) + [blocked, kept])
+    want = desired([team()], [member("sari@x.com")])
+    assert diff(want, have).unmanaged_active_revoked == ()
+
+
+def test_unmanaged_key_in_pruned_team_is_flagged_only_with_prune():
+    want, have = world()
+    old = team("old")
+    stray = key("team-bot", None, "old", managed=False)
+    have = actual([team(), old], have.members, list(have.keys) + [stray])
+    assert diff(want, have).unmanaged_active_revoked == ()
+    assert diff(want, have, prune=True).unmanaged_active_revoked == ("key:team-bot",)

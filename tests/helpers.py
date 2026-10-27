@@ -53,6 +53,7 @@ def chat(
     *,
     stream: bool = False,
     tools: list | None = None,
+    tool_choice: str | dict | None = None,
     prompt: str = "ping",
 ) -> httpx.Response:
     body: dict = {"model": model, "messages": [{"role": "user", "content": prompt}]}
@@ -60,6 +61,8 @@ def chat(
         body["stream"] = True
     if tools is not None:
         body["tools"] = tools
+    if tool_choice is not None:
+        body["tool_choice"] = tool_choice
     if not stream:
         return client.post("/v1/chat/completions", json=body)
     # A stream that breaks mid-body still yields a Response with whatever arrived;

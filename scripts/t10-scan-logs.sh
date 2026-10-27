@@ -3,6 +3,8 @@
 # table for the sentinel values written by tests/acceptance/test_log_hygiene.py
 # plus LITELLM_MASTER_KEY and OPENAI_API_KEY from the env file. mock-upstream is
 # excluded: it receives prompts by design. Prints only source names, never values.
+# Before grepping it checks that the T10 traffic actually reached the spend log
+# and the Caddy access log, so a clean result is not just an empty source.
 # Usage: scripts/t10-scan-logs.sh ENV   (local | vm)
 set -eu
 
@@ -12,6 +14,8 @@ ENV_NAME="${1:-local}"
 ENV_FILE="deploy/env/$ENV_NAME.env"
 SENTINELS="var/t10-sentinels.txt"
 SERVICES="litellm-a litellm-b caddy postgres redis"
+T10_REQUESTS=2
+SPEND_WAIT_S="${T10_SPEND_WAIT_S:-60}"
 
 fail() {
 	echo "T10 gagal: $*" >&2
@@ -43,11 +47,34 @@ for name in LITELLM_MASTER_KEY OPENAI_API_KEY; do
 	printf '%s\n' "$value" >>"$work/patterns"
 done
 
+sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1
+}
+
+# LiteLLM keys spend log rows by sha256 of the raw key. The raw key only goes
+# through a pipe; its hash is not secret.
+key_hash="$(grep '^sk-' "$SENTINELS" | head -n 1 | tr -d '\n' | sha256)"
+[ -n "$key_hash" ] || fail "$SENTINELS tidak berisi key T10"
+waited=0
+while :; do
+	rows="$(echo "SELECT count(*) FROM \"LiteLLM_SpendLogs\" WHERE api_key = :'h';" |
+		compose exec -T postgres psql -U litellm -d litellm -X -At -v ON_ERROR_STOP=1 -v h="$key_hash" 2>/dev/null)" ||
+		fail "tabel LiteLLM_SpendLogs tidak dapat dibaca"
+	[ "$rows" -ge "$T10_REQUESTS" ] && break
+	[ "$waited" -ge "$SPEND_WAIT_S" ] &&
+		fail "LiteLLM_SpendLogs hanya berisi $rows dari $T10_REQUESTS request T10 setelah $SPEND_WAIT_S detik"
+	sleep 2
+	waited=$((waited + 2))
+done
+
 found=""
 for svc in $SERVICES; do
 	compose logs --no-color "$svc" >"$work/log" 2>&1 || fail "log $svc tidak dapat dibaca"
 	if grep -qF -f "$work/patterns" "$work/log"; then
 		found="$found $svc"
+	fi
+	if [ "$svc" = caddy ] && ! grep -qF '"uri":"/v1/chat/completions"' "$work/log"; then
+		fail "access log Caddy tidak berisi request /v1/chat/completions"
 	fi
 done
 
