@@ -81,7 +81,7 @@ def _key_policy_dict(token: str, policy: KeyPolicy) -> dict:
     }
 
 
-def _key_name(key: ActualKey) -> str:
+def key_name(key: ActualKey) -> str:
     return key.key_alias or key.token[:8]
 
 
@@ -158,12 +158,12 @@ def diff(desired: DesiredState, actual: ActualState, *, prune: bool = False) -> 
     revoked_unmanaged: list[str] = []
     for key in actual.keys:
         if not key.managed:
-            unmanaged.append(f"key:{_key_name(key)}")
+            unmanaged.append(f"key:{key_name(key)}")
             if not key.blocked and (
                 (key.team_id, key.user_id) in removed_members
                 or (prune and key.team_id in orphans)
             ):
-                revoked_unmanaged.append(f"key:{_key_name(key)}")
+                revoked_unmanaged.append(f"key:{key_name(key)}")
             continue
         if key.blocked:
             continue
@@ -177,7 +177,7 @@ def diff(desired: DesiredState, actual: ActualState, *, prune: bool = False) -> 
                 "user_id": key.user_id,
                 "team_id": key.team_id,
             }
-            actions.append(Action("block_key", f"key:{_key_name(key)}", before, None, True))
+            actions.append(Action("block_key", f"key:{key_name(key)}", before, None, True))
             continue
         policy = desired.key_policies.get(want.user_id)
         if policy is None or _same_policy(key.policy, policy):
@@ -185,7 +185,7 @@ def diff(desired: DesiredState, actual: ActualState, *, prune: bool = False) -> 
         before = _key_policy_dict(key.token, key.policy)
         after = _key_policy_dict(key.token, policy)
         actions.append(
-            Action("update_key", f"key:{_key_name(key)}", before, after, _narrowed(before, after))
+            Action("update_key", f"key:{key_name(key)}", before, after, _narrowed(before, after))
         )
 
     if prune:

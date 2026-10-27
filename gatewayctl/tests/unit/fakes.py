@@ -8,15 +8,16 @@ RAW_KEY = "sk-rawsecret123456"
 class RecordingClient:
     """Records mutating calls in order; the nth call (1-based) can be made to fail."""
 
-    def __init__(self, fail_on_call: int | None = None):
+    def __init__(self, fail_on_call: int | None = None, error: Exception | None = None):
         self.calls: list[tuple] = []
         self.fail_on_call = fail_on_call
+        self.error = error
         self.checked = False
 
     def _record(self, *call):
         self.calls.append(call)
         if self.fail_on_call == len(self.calls):
-            raise ApiError(500, "/fake", "boom")
+            raise self.error or ApiError(500, "/fake", "boom")
 
     def check(self):
         self.checked = True

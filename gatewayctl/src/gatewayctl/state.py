@@ -52,17 +52,20 @@ def key_from_api(key: dict) -> ActualKey:
 
 
 def _members_from_info(team_id: str, info: dict) -> list[MemberSpec]:
-    members = []
+    # Budgets come from team_memberships, but some LiteLLM versions only create that row when a
+    # member budget is set, so members_with_roles is the authoritative member list.
+    budgets: dict[str, float | None] = {}
     for membership in info.get("team_memberships") or ():
         budget = (membership.get("litellm_budget_table") or {}).get("max_budget")
-        members.append(
-            MemberSpec(
-                user_id=membership["user_id"],
-                team_id=team_id,
-                max_budget_in_team=None if budget is None else float(budget),
-            )
-        )
-    return members
+        budgets[membership["user_id"]] = None if budget is None else float(budget)
+    for member in (info.get("team_info") or {}).get("members_with_roles") or ():
+        user_id = member.get("user_id")
+        if user_id:
+            budgets.setdefault(user_id, None)
+    return [
+        MemberSpec(user_id=user_id, team_id=team_id, max_budget_in_team=budget)
+        for user_id, budget in budgets.items()
+    ]
 
 
 def fetch_actual(client: LiteLLMClient) -> ActualState:

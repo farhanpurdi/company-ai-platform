@@ -22,6 +22,10 @@ fail() {
 	exit 1
 }
 
+case "$SPEND_WAIT_S" in
+'' | *[!0-9]*) fail "T10_SPEND_WAIT_S harus bilangan bulat detik (mis. 120), bukan '$SPEND_WAIT_S'" ;;
+esac
+
 [ -f "$ENV_FILE" ] || fail "$ENV_FILE tidak ditemukan"
 [ -s "$SENTINELS" ] || fail "$SENTINELS kosong atau tidak ada; jalankan tests/acceptance/test_log_hygiene.py dulu"
 
@@ -53,8 +57,8 @@ sha256() {
 
 # LiteLLM keys spend log rows by sha256 of the raw key. The raw key only goes
 # through a pipe; its hash is not secret.
+grep -q '^sk-' "$SENTINELS" || fail "$SENTINELS tidak berisi key T10"
 key_hash="$(grep '^sk-' "$SENTINELS" | head -n 1 | tr -d '\n' | sha256)"
-[ -n "$key_hash" ] || fail "$SENTINELS tidak berisi key T10"
 waited=0
 while :; do
 	rows="$(echo "SELECT count(*) FROM \"LiteLLM_SpendLogs\" WHERE api_key = :'h';" |

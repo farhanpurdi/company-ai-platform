@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from gatewayctl.audit import AuditLog
 from gatewayctl.client import LiteLLMClient
@@ -30,7 +30,8 @@ class AuditWriteError(Exception):
         self.cause = cause
 
 
-def budget_limits(budgets: list[Mapping]) -> list[dict]:
+def budget_limits(budgets: Iterable[Mapping]) -> list[dict]:
+    # Single place that maps gatewayctl budget windows to LiteLLM's budget_limits fields.
     return [{"budget_duration": b["duration"], "max_budget": b["max_usd"]} for b in budgets]
 
 

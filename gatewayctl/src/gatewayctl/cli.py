@@ -271,6 +271,15 @@ def apply_command(
         )
     except ApplyError as exc:
         cause = redact(str(exc.cause), [master_key])
+        if isinstance(exc.cause, GatewayUnavailable):
+            if exc.cause.may_have_applied:
+                fail(
+                    f"{cause} pada {exc.action.kind} {exc.action.target}; aksi ini mungkin sudah diterapkan "
+                    f"di LiteLLM tanpa catatan audit. {exc.done} aksi sebelumnya tercatat di audit; "
+                    f"jalankan plan untuk memeriksa lalu catat aksi ini secara manual bila sudah diterapkan."
+                )
+            if exc.done == 0:
+                fail(cause, EXIT_UNAVAILABLE)
         fail(
             f"Gagal pada {exc.action.kind} {exc.action.target}: {cause}. "
             f"{exc.done} aksi sebelumnya berhasil dan tercatat di audit; jalankan apply lagi setelah diperbaiki."

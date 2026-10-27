@@ -1,52 +1,15 @@
 # Local profile: internal CA, published on 127.0.0.1:8443 only.
-# Caddy redacts Authorization and Cookie headers in access logs by default; the
-# access_log snippet also redacts every other header LiteLLM accepts a key from.
+# Shared upstream, access log and allowlist snippets live in common.caddy.
 {
 	skip_install_trust
 }
 
-(litellm_upstream) {
-	reverse_proxy litellm-a:4000 litellm-b:4000 {
-		lb_policy round_robin
-		health_uri /health/liveliness
-		health_interval 5s
-		health_timeout 3s
-		flush_interval -1
-		transport http {
-			read_timeout 600s
-		}
-	}
-}
-
-(access_log) {
-	log {
-		output stdout
-		format filter {
-			wrap json
-			request>headers>X-Litellm-Api-Key replace REDACTED
-			request>headers>Api-Key replace REDACTED
-			request>headers>X-Api-Key replace REDACTED
-			request>headers>X-Goog-Api-Key replace REDACTED
-			request>headers>Ocp-Apim-Subscription-Key replace REDACTED
-			request>headers>X-Mcp-Auth replace REDACTED
-		}
-	}
-}
+import /etc/caddy/common.caddy
 
 {$LLM_HOST} {
 	tls internal
 	import access_log
-
-	# Exact match on the request path as LiteLLM will route it. The `path`
-	# matcher cleans dot segments first while reverse_proxy forwards the raw
-	# path, so `/openai/x/../../v1/models` would reach non-allowlisted routes.
-	@inference expression `{http.request.uri.path} in ["/v1/chat/completions", "/v1/models", "/health/liveliness"]`
-	handle @inference {
-		import litellm_upstream
-	}
-	handle {
-		respond 404
-	}
+	import inference_allowlist
 }
 
 {$LLM_ADMIN_HOST} {

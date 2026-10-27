@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 
-from gatewayctl.apply import MANAGED_METADATA
+from gatewayctl.apply import MANAGED_METADATA, budget_limits
 from gatewayctl.audit import AuditLog
 from gatewayctl.client import LiteLLMClient
+from gatewayctl.diff import key_name
 from gatewayctl.model import ActualKey, ActualState, DesiredState
 
 
@@ -22,10 +23,6 @@ class BlockError(Exception):
         self.target = target
         self.cause = cause
         self.applied = applied
-
-
-def _name(key: ActualKey) -> str:
-    return key.key_alias or key.token[:8]
 
 
 def issue_key(
@@ -50,9 +47,7 @@ def issue_key(
             "key_alias": alias,
             "models": sorted(policy.models),
             "rpm_limit": policy.rpm_limit,
-            "budget_limits": [
-                {"budget_duration": b.duration, "max_budget": b.max_usd} for b in policy.budgets
-            ],
+            "budget_limits": budget_limits({"duration": b.duration, "max_usd": b.max_usd} for b in policy.budgets),
             "metadata": {**MANAGED_METADATA, "owner_kind": member.kind},
         }
     )
@@ -88,7 +83,7 @@ def block_keys(
             continue
         if alias is not None and key.key_alias != alias:
             continue
-        target = f"key:{_name(key)}"
+        target = f"key:{key_name(key)}"
         try:
             client.key_block(key.token)
         except Exception as exc:

@@ -89,6 +89,7 @@ services:
     volumes:
       - caddy-data:/data
       - caddy-config:/config
+      - ./caddy/common.caddy:/etc/caddy/common.caddy:ro
     networks:
       default:
         # Lets containers (tools) reach the gateway by its public hostnames.

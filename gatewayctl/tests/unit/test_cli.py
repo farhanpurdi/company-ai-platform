@@ -334,6 +334,48 @@ def test_apply_failure_exit_1(runner, files, backend):
     assert len(Path(cli_audit_path()).read_text(encoding="utf-8").splitlines()) == 1
 
 
+def test_apply_read_timeout_warns_action_may_be_applied(runner, files, backend):
+    backend.client = RecordingClient(
+        fail_on_call=2,
+        error=GatewayUnavailable("tidak dapat menghubungi LiteLLM (ReadTimeout)", may_have_applied=True),
+    )
+    backend.actual = ActualState({}, frozenset(), (), ())
+    result = run(runner, files, "apply")
+    last = assert_apply_failure(result, 1)
+    assert "member:dev/budi@perusahaan.com" in last
+    assert "mungkin sudah diterapkan" in last
+    assert len(Path(cli_audit_path()).read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_apply_unavailable_before_any_change_is_exit_3(runner, files, backend):
+    backend.client = RecordingClient(
+        fail_on_call=1, error=GatewayUnavailable("tidak dapat menghubungi LiteLLM (ConnectError)")
+    )
+    backend.actual = ActualState({}, frozenset(), (), ())
+    result = run(runner, files, "apply")
+    assert assert_apply_failure(result, 3) == "tidak dapat menghubungi LiteLLM (ConnectError)"
+
+
+def test_apply_unavailable_after_partial_progress_is_exit_1(runner, files, backend):
+    backend.client = RecordingClient(
+        fail_on_call=2, error=GatewayUnavailable("tidak dapat menghubungi LiteLLM (ConnectError)")
+    )
+    backend.actual = ActualState({}, frozenset(), (), ())
+    result = run(runner, files, "apply")
+    last = assert_apply_failure(result, 1)
+    assert "1 aksi sebelumnya" in last
+    assert "mungkin sudah diterapkan" not in last
+
+
+def assert_apply_failure(result, code):
+    # apply prints the plan to stderr first; the failure is the last line.
+    assert result.exit_code == code, result.stderr
+    assert "Traceback" not in result.stderr
+    assert result.stdout == ""
+    assert MASTER not in result.stderr
+    return result.stderr.strip().splitlines()[-1]
+
+
 def test_apply_requires_operator(runner, files, backend):
     backend.client = RecordingClient()
     backend.actual = ActualState({}, frozenset(), (), ())
@@ -559,10 +601,10 @@ def test_api_error_while_fetching_state_exit_1(runner, files, api):
 
 
 def test_unavailable_mid_apply_is_apply_failure_exit_1(runner, files, backend):
-    # Spec 6.7: an API failure in the middle of apply is exit 1, even if it is a connection loss.
+    # Spec 6.7: a connection lost after the request was sent is exit 1 (it may have been applied).
     class Dropping(RecordingClient):
         def team_new(self, payload):
-            raise GatewayUnavailable("tidak dapat menghubungi LiteLLM (ReadError)")
+            raise GatewayUnavailable("tidak dapat menghubungi LiteLLM (ReadError)", may_have_applied=True)
 
     backend.client = Dropping()
     backend.actual = ActualState({}, frozenset(), (), ())

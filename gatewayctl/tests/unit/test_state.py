@@ -115,6 +115,27 @@ def test_member_budget_from_team_info():
     assert all(m.team_id == "dev" for m in actual.members)
 
 
+def test_members_without_membership_row_still_counted():
+    # Some LiteLLM versions only create a team_membership row when a member budget is set;
+    # such members appear only in members_with_roles.
+    team_info = {**TEAM_DEV, "members_with_roles": [
+        {"user_id": "a@x.com", "role": "user"},
+        {"user_id": "svc-bot", "role": "user"},
+        {"user_id": None, "role": "admin"},
+    ]}
+    infos = {
+        "dev": {
+            "team_info": team_info,
+            "team_memberships": [{"user_id": "a@x.com", "litellm_budget_table": {"max_budget": 42}}],
+        }
+    }
+    actual = fetch_actual(FakeClient([TEAM_DEV], infos, []))
+    assert sorted((m.user_id, m.max_budget_in_team) for m in actual.members) == [
+        ("a@x.com", 42.0),
+        ("svc-bot", None),
+    ]
+
+
 def test_team_without_metadata_is_unmanaged():
     bare = {**TEAM_FOREIGN, "metadata": None, "team_id": "bare"}
     missing = {k: v for k, v in TEAM_FOREIGN.items() if k != "metadata"} | {"team_id": "nometa"}
