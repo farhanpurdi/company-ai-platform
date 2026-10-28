@@ -43,7 +43,6 @@ Python dan library lain tidak perlu dipasang. Semuanya berjalan di dalam contain
 ```sh
 git clone https://github.com/farhanpurdi/company-ai-platform.git
 cd company-ai-platform
-git checkout feat/litellm-pilot   # selama PR belum di-merge ke main
 make hooks
 ```
 
@@ -130,6 +129,8 @@ Hasil yang diharapkan: `Ringkasan: 0 aksi (0 destruktif), ...` tanpa `Error 2`.
 
 Kalau muncul `GATEWAYCTL_OPERATOR wajib diisi`: email git belum diatur. Jalankan `git config user.email "nama@perusahaan.com"` lalu ulangi.
 
+Kalau muncul `Ada aksi destruktif; tidak ada yang dijalankan. Ulangi dengan --confirm.`: belum ada yang berubah. Baca baris bertanda `[destructive]` di atasnya. Di database baru seharusnya tidak ada aksi destruktif sama sekali. Pakai `make apply ARGS=--confirm` hanya bila setiap aksi itu memang diinginkan, misalnya offboarding (Bagian C).
+
 ### A6. Buat key dan kirim pertanyaan pertama
 
 Buat key untuk user uji `dev1@local.test`. Key disimpan ke variabel `KEY` agar tidak tampil di layar:
@@ -214,7 +215,6 @@ Minta atau siapkan hal berikut:
 ```sh
 git clone https://github.com/farhanpurdi/company-ai-platform.git
 cd company-ai-platform
-git checkout feat/litellm-pilot
 git config user.email "nama-admin@perusahaan.com"
 ```
 
