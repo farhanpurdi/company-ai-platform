@@ -1,0 +1,18 @@
+# VM profile: real OpenAI upstream, company certificate, admin host limited to
+# the VPN CIDR.
+
+services:
+  caddy:
+    environment:
+      VPN_CIDR: ${VPN_CIDR:?VPN_CIDR belum diisi}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile.vm:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERT_DIR:?TLS_CERT_DIR belum diisi}:/certs:ro
+
+  tools:
+    env_file:
+      - path: env/vm.env
+        required: false

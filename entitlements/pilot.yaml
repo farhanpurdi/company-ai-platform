@@ -1,0 +1,36 @@
+# Entitlements pilot (profil VM). Nilai awal dari matriks panduan 4.1; sesuaikan
+# setelah 2 minggu pemakaian. Tambah member dengan menghapus tanda komentar,
+# lalu `make plan ENV=vm` dan `make apply ENV=vm`. Menghapus member = offboarding:
+# semua key miliknya diblokir (butuh --confirm).
+version: 1
+teams:
+  it-developer:
+    alias: "IT / Developer"
+    models: [company-fast, company-coding, company-reasoning]
+    budget: { max_usd: 500, duration: 30d }
+    rpm_limit: 600
+    member_defaults:
+      max_budget_in_team: 100
+      key:
+        rpm_limit: 60
+        budgets: [{ duration: 24h, max_usd: 10 }, { duration: 30d, max_usd: 100 }]
+    members:
+      # Akun uji smoke T06/T07/T11: key dibatasi $2 per 30 hari.
+      - user_id: smoke@perusahaan.com
+        max_budget_in_team: 2
+        key: { budgets: [{ duration: 30d, max_usd: 2 }] }
+      # - nama.depan@perusahaan.com
+
+  finance:
+    alias: "Finance"
+    models: [company-fast]
+    budget: { max_usd: 100, duration: 30d }
+    rpm_limit: 300
+    member_defaults:
+      max_budget_in_team: 30
+      key:
+        rpm_limit: 30
+        budgets: [{ duration: 24h, max_usd: 3 }, { duration: 30d, max_usd: 30 }]
+    # Kosong (null) dihitung sebagai daftar kosong.
+    members:
+      # - nama.depan@perusahaan.com

@@ -14,7 +14,7 @@
 
 - Python 3.12; dependensi Python hanya yang ada di Tech Stack.
 - Host hanya membutuhkan Docker dan `make`; semua perintah Python dijalankan di container `tools`.
-- Image LiteLLM dipin ke digest, min. `v1.93.0-stable`.
+- Image LiteLLM dipin ke digest, min. `v1.93.0-stable`. Catatan implementasi: LiteLLM tidak lagi menerbitkan tag `-stable` berversi (tidak ada `v1.93.0-stable`); yang dipin adalah `v1.106.4@sha256:c169fb3a…`, digest yang sama dengan `main-stable` per 2026-10-27.
 - `LITELLM_MODE=PRODUCTION`; `allow_requests_on_db_unavailable` tidak pernah diaktifkan; response caching mati.
 - `LITELLM_SALT_KEY` tidak pernah diganti setelah ada data; `init-local` menolak menimpa env yang sudah ada.
 - Alias model: `company-fast` → `gpt-5.6-terra`, `company-coding` → `gpt-5.6-terra`, `company-reasoning` → `gpt-5.6-sol`. Fallback `company-reasoning` → `company-coding`.
@@ -411,7 +411,7 @@ Ketentuan:
 - `postgres` dan `redis` tanpa `ports`; healthcheck `pg_isready` dan `redis-cli -a $REDIS_PASSWORD ping`.
 - `config.yaml` = panduan 5.2 ditambah: `api_base: os.environ/OPENAI_API_BASE`, `model_info` dengan harga di Global Constraints, `router_settings.disable_cooldowns: true` (satu deployment per alias; cooldown akan membuat alias mati setelah uji kegagalan), `litellm_settings: {request_timeout: 600, turn_off_message_logging: true, json_logs: true, cache: false}`, `general_settings.store_prompts_in_spend_logs: false`. Container memakai `LITELLM_LOG=INFO` dan `LITELLM_MODE=PRODUCTION`.
 - Caddy: `{$LLM_HOST}` hanya meneruskan `path /v1/chat/completions /v1/models /health/liveliness` ke `litellm-a:4000 litellm-b:4000` dengan `lb_policy round_robin`, health check aktif `/health/liveliness`, `flush_interval -1`, `transport http { read_timeout 600s }`; path lain `respond 404`. `{$LLM_ADMIN_HOST}` meneruskan semuanya. Lokal: `tls internal`, port `127.0.0.1:8443:443`. VM: `tls /certs/fullchain.pem /certs/privkey.pem`, admin hanya dari `remote_ip {$VPN_CIDR}` (selain itu 403), port 80/443. Access log ke stdout.
-- Image LiteLLM dipin ke digest: ambil tag `v1.93.x-stable` terbaru dengan `docker buildx imagetools inspect ghcr.io/berriai/litellm:<tag>`, tulis tag dan digest di `compose.yaml`.
+- Image LiteLLM dipin ke digest: ambil tag `v1.93.x-stable` terbaru dengan `docker buildx imagetools inspect ghcr.io/berriai/litellm:<tag>`, tulis tag dan digest di `compose.yaml`. Catatan implementasi: LiteLLM tidak lagi menerbitkan tag `-stable` berversi (tidak ada `v1.93.0-stable`); yang dipin adalah `v1.106.4@sha256:c169fb3a…`, digest yang sama dengan `main-stable` per 2026-10-27.
 - `scripts/init-local.sh` menolak bila `deploy/env/local.env` sudah ada; membuat `LITELLM_MASTER_KEY=sk-<hex32>`, `LITELLM_SALT_KEY=sk-<hex32>`, password acak, `OPENAI_API_KEY=sk-mock-<hex16>`, `OPENAI_API_BASE=http://mock-upstream:8080/v1`.
 
 - [ ] **Step 1: Tulis file deploy dan target Makefile** sesuai ketentuan.

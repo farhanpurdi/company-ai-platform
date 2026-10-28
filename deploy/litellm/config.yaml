@@ -1,0 +1,57 @@
+# LiteLLM proxy config shared by every profile (local and VM).
+# Prices are pinned per token so spend does not depend on the built-in cost map.
+model_list:
+  - model_name: company-fast
+    litellm_params:
+      model: openai/gpt-5.6-terra
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE
+    model_info:
+      input_cost_per_token: 2.5e-6
+      output_cost_per_token: 1.5e-5
+  - model_name: company-coding
+    litellm_params:
+      model: openai/gpt-5.6-terra
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE
+    model_info:
+      input_cost_per_token: 2.5e-6
+      output_cost_per_token: 1.5e-5
+  - model_name: company-reasoning
+    litellm_params:
+      model: openai/gpt-5.6-sol
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE
+    model_info:
+      input_cost_per_token: 5.0e-6
+      output_cost_per_token: 3.0e-5
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  redis_host: os.environ/REDIS_HOST
+  redis_port: os.environ/REDIS_PORT
+  redis_password: os.environ/REDIS_PASSWORD
+  fallbacks: [{"company-reasoning": ["company-coding"]}]
+  # One deployment per alias: a cooldown would take the whole alias down.
+  disable_cooldowns: true
+
+litellm_settings:
+  # Per attempt (spec 5). A hung non-streaming call plus retries can outlast
+  # Caddy's 600s read_timeout (spec 4.2); open item for Gate 2, not changed here.
+  request_timeout: 600
+  turn_off_message_logging: true
+  json_logs: true
+  cache: false
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_prompts_in_spend_logs: false
+  # Explicit cross-replica Redis for spend counters and rate limits; fails loudly
+  # instead of silently falling back to per-replica memory.
+  coordination_redis:
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+    password: os.environ/REDIS_PASSWORD
+  # Never enable allow_requests_on_db_unavailable: the gateway must fail closed.
