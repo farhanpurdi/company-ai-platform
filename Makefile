@@ -21,7 +21,7 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl local-ca test smoke hooks
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl local-ca vm-ca test smoke hooks
 
 # Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
 hooks:
@@ -82,6 +82,15 @@ ifeq ($(ENV),local)
 	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(LOCAL_CA).tmp
 	@mv $(LOCAL_CA).tmp $(LOCAL_CA)
 endif
+
+# VM with VM_TLS=internal (access by IP): Caddy's root certificate for the tools
+# container (GATEWAY_CA_BUNDLE in vm.env) and for tester laptops. Also public.
+VM_CA := var/caddy-vm-root.crt
+vm-ca:
+	@[ "$(ENV)" = vm ] || { echo "vm-ca hanya untuk ENV=vm" >&2; exit 1; }
+	@mkdir -p var
+	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(VM_CA).tmp
+	@mv $(VM_CA).tmp $(VM_CA)
 
 # Unit, then integration and acceptance against the local stack (make up),
 # then the T10 log scan on the host.

@@ -1,13 +1,16 @@
-# VM profile: real OpenAI upstream, company certificate, admin host limited to
-# the VPN CIDR.
+# VM profile: real OpenAI upstream, company certificate (or Caddy's internal CA
+# with VM_TLS=internal), admin host limited to the VPN CIDR.
 
 services:
   caddy:
     environment:
       VPN_CIDR: ${VPN_CIDR:?VPN_CIDR belum diisi}
+      VM_TLS: ${VM_TLS:-company}
     ports:
       - "80:80"
       - "443:443"
+      # Admin host when the gateway is reached by IP (LLM_ADMIN_HOST=<ip>:8443).
+      - "8443:8443"
     volumes:
       - ./caddy/Caddyfile.vm:/etc/caddy/Caddyfile:ro
       - ${TLS_CERT_DIR:?TLS_CERT_DIR belum diisi}:/certs:ro
