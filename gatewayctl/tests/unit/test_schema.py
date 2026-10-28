@@ -694,6 +694,46 @@ def test_service_account_name_with_inner_whitespace_rejected(tmp_path, config):
     assert "spasi atau karakter tak terlihat" in err.message
 
 
+# default_user_id is LiteLLM's identity for the master key; state.py ignores it as a member.
+@pytest.mark.parametrize("member", ["default_user_id", '"Default_User_ID"', "{ user_id: default_user_id }"])
+def test_user_id_reserved_for_proxy_admin_rejected(tmp_path, config, member):
+    err = load_error(
+        tmp_path,
+        f"""\
+        version: 1
+        teams:
+          a:
+            models: [company-fast]
+            budget: {{ max_usd: 10, duration: 30d }}
+            rpm_limit: 100
+            members: [{member}]
+        """,
+        config,
+    )
+    assert err.path == "teams.a.members[0].user_id"
+    assert "dipakai LiteLLM" in err.message
+
+
+def test_service_account_name_reserved_for_proxy_admin_rejected(tmp_path, config):
+    err = load_error(
+        tmp_path,
+        """\
+        version: 1
+        teams:
+          a:
+            models: [company-fast]
+            budget: { max_usd: 10, duration: 30d }
+            rpm_limit: 100
+        service_accounts:
+          default_user_id:
+            team: a
+        """,
+        config,
+    )
+    assert err.path == "service_accounts.default_user_id"
+    assert "dipakai LiteLLM" in err.message
+
+
 def test_normalize_id_is_public():
     assert normalize_id("  Budi@Perusahaan.COM ") == "budi@perusahaan.com"
 

@@ -21,7 +21,7 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
 1. `cp deploy/env/vm.env.example deploy/env/vm.env`, isi semua nilai dari secret manager (master key, salt key, password, `OPENAI_API_KEY` milik OpenAI Project khusus gateway, `VPN_CIDR`), lalu `chmod 600 deploy/env/vm.env`. `LITELLM_SALT_KEY` tidak boleh diganti setelah ada data.
 2. Letakkan `fullchain.pem` dan `privkey.pem` di `deploy/certs/` dan set `TLS_CERT_DIR` ke path absolut direktori itu. Folder ini tidak pernah di-commit. Bila sertifikat berasal dari CA internal yang tidak dikenal container `tools`, taruh CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE=/repo/deploy/certs/<ca>.pem` di `vm.env`.
 3. `make up ENV=vm`, lalu `make ps ENV=vm`: semua service `healthy`/`running`.
-4. `make plan ENV=vm` (exit 2 = ada perubahan; tinjau rencananya), lalu `make apply ENV=vm ARGS=--confirm` dengan `OPERATOR` terisi. Ulangi `make plan ENV=vm`: harus exit 0.
+4. `make plan ENV=vm` (exit 2 = ada perubahan; tinjau rencananya), lalu `make apply ENV=vm` dengan `OPERATOR` terisi. Di database baru tidak ada aksi destruktif; bila apply meminta `--confirm`, berhenti dan periksa plan. Ulangi `make plan ENV=vm`: harus exit 0.
 5. Terbitkan key smoke: `SMOKE_KEY=$(make -s ctl ENV=vm ARGS='key issue --user smoke@perusahaan.com --label smoke')`. Key hanya tampil sekali; jangan ditulis ke file atau chat.
 
 ## 3. Smoke otomatis (T06, T07)

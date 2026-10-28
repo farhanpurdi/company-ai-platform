@@ -19,6 +19,7 @@ pytestmark = pytest.mark.usefixtures("mock")
 REVOCATION_TIMEOUT_S = 300
 POLL_INTERVAL_S = 5
 UNMANAGED_TEAM = "legacy-x"
+FRESH_TEAM = "tmp-fresh"
 
 
 def _ok(result) -> None:
@@ -100,15 +101,41 @@ def test_removed_member_is_offboarded(applied, tmp_path):
     assert plan.returncode == 0, plan.stderr
 
 
+def test_new_team_applies_without_confirm(applied, tmp_path):
+    # LiteLLM adds the master key's identity (default_user_id) to every team it creates;
+    # that must not surface as a destructive remove_member on the next plan or apply.
+    original = yaml.safe_load(LOCAL_ENTITLEMENTS.read_text(encoding="utf-8"))
+    with_team = json.loads(json.dumps(original))
+    with_team["teams"][FRESH_TEAM] = {
+        "models": ["company-fast"],
+        "budget": {"max_usd": 10, "duration": "30d"},
+        "rpm_limit": 60,
+        "members": ["tmp-fresh@local.test"],
+    }
+    file_with = _write(tmp_path / "with-team.yaml", with_team)
+
+    _delete_team(FRESH_TEAM)
+    try:
+        _ok(run_ctl("apply", file=file_with))
+        plan = run_ctl("plan", file=file_with)
+        assert plan.returncode == 0, plan.stderr
+        _ok(run_ctl("apply", file=file_with))
+    finally:
+        restore = run_ctl("apply", "--confirm", "--prune")
+    _ok(restore)
+    plan = run_ctl("plan", "--prune")
+    assert plan.returncode == 0, plan.stderr
+
+
 def _team_snapshot(team_id: str) -> dict:
     info = admin().team_info(team_id)["team_info"]
     fields = ("team_id", "team_alias", "models", "max_budget", "budget_duration", "rpm_limit", "metadata", "blocked")
     return {f: info.get(f) for f in fields}
 
 
-def _delete_unmanaged_team() -> None:
+def _delete_team(team_id: str) -> None:
     try:
-        admin().team_delete(UNMANAGED_TEAM)
+        admin().team_delete(team_id)
     except ApiError as exc:
         if exc.status not in (400, 404):
             raise
@@ -116,7 +143,7 @@ def _delete_unmanaged_team() -> None:
 
 def test_unmanaged_team_untouched(applied):
     # A leftover from an interrupted run would otherwise make team_new fail.
-    _delete_unmanaged_team()
+    _delete_team(UNMANAGED_TEAM)
     admin().team_new({"team_id": UNMANAGED_TEAM, "models": ["company-fast"]})
     try:
         before = _team_snapshot(UNMANAGED_TEAM)
@@ -131,4 +158,4 @@ def test_unmanaged_team_untouched(applied):
         _ok(run_ctl("apply", "--confirm"))
         assert _team_snapshot(UNMANAGED_TEAM) == before
     finally:
-        _delete_unmanaged_team()
+        _delete_team(UNMANAGED_TEAM)

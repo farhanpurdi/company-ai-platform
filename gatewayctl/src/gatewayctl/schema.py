@@ -22,7 +22,14 @@ from pydantic import (
 )
 from yaml.constructor import ConstructorError
 
-from gatewayctl.model import BudgetWindow, DesiredState, KeyPolicy, MemberSpec, TeamSpec
+from gatewayctl.model import (
+    PROXY_ADMIN_USER_ID,
+    BudgetWindow,
+    DesiredState,
+    KeyPolicy,
+    MemberSpec,
+    TeamSpec,
+)
 
 TEAM_ID_PATTERN = r"^[a-z0-9][a-z0-9-]*$"
 DURATION_PATTERN = r"^\d+[hd]$"
@@ -186,6 +193,8 @@ def _id_problem(value: str) -> str | None:
     # Cf covers zero-width characters that str.strip() and isspace() miss.
     if any(ch.isspace() or unicodedata.category(ch) == "Cf" for ch in value):
         return f"id {value!r} tidak boleh mengandung spasi atau karakter tak terlihat"
+    if value == PROXY_ADMIN_USER_ID:
+        return f"id {value!r} dipakai LiteLLM untuk master key dan tidak bisa dikelola"
     return None
 
 

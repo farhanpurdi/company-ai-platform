@@ -136,6 +136,26 @@ def test_members_without_membership_row_still_counted():
     ]
 
 
+def test_proxy_admin_member_is_ignored():
+    # LiteLLM adds the caller of /team/new as team admin; with the master key that is
+    # default_user_id, which no entitlements file lists, so it must not show up as a member.
+    team_info = {**TEAM_DEV, "members_with_roles": [
+        {"user_id": "default_user_id", "role": "admin"},
+        {"user_id": "a@x.com", "role": "user"},
+    ]}
+    infos = {
+        "dev": {
+            "team_info": team_info,
+            "team_memberships": [
+                {"user_id": "default_user_id", "litellm_budget_table": None},
+                {"user_id": "a@x.com", "litellm_budget_table": None},
+            ],
+        }
+    }
+    actual = fetch_actual(FakeClient([TEAM_DEV], infos, []))
+    assert [m.user_id for m in actual.members] == ["a@x.com"]
+
+
 def test_team_without_metadata_is_unmanaged():
     bare = {**TEAM_FOREIGN, "metadata": None, "team_id": "bare"}
     missing = {k: v for k, v in TEAM_FOREIGN.items() if k != "metadata"} | {"team_id": "nometa"}

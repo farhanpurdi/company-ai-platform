@@ -6,6 +6,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+# LiteLLM's user_id for requests made with the master key. LiteLLM adds it as admin to
+# every team gatewayctl creates, so it is never a managed member.
+PROXY_ADMIN_USER_ID = "default_user_id"
+
 
 @dataclass(frozen=True)
 class BudgetWindow:
