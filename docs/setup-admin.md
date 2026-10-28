@@ -199,15 +199,25 @@ Jangan pernah menjalankan `docker compose down -v` atau menghapus volume Docker,
 
 Bagian ini memakai pola yang sama dengan Bagian A. Bedanya, semua perintah memakai `ENV=vm` dan rahasianya diisi manual.
 
+Gateway di VM bisa diakses dengan dua cara:
+
+| | Lewat IP (belum ada domain) | Lewat domain |
+| --- | --- | --- |
+| Alamat untuk pengguna | `https://10.0.0.5/v1` | `https://llm.perusahaan.internal/v1` |
+| Alamat admin (hanya dari VPN) | `https://10.0.0.5:8443` | `https://llm-admin.perusahaan.internal` |
+| Sertifikat | Dibuat otomatis oleh Caddy; laptop penguji memercayai CA-nya | Sertifikat perusahaan |
+| `VM_TLS` di `vm.env` | `internal` | `company` |
+
+Langkah di bawah memakai cara **lewat IP**. Ganti `10.0.0.5` dengan IP VM Anda. Cara pindah ke domain ada di akhir bagian ini.
+
 ### B1. Siapkan sebelum mulai
 
 Minta atau siapkan hal berikut:
 
 - [ ] VM Linux dengan Docker (Compose v2), `make`, dan `git` terpasang.
-- [ ] Port 80 dan 443 VM terbuka untuk jaringan kantor/VPN, dan VM bisa mengakses `api.openai.com`.
-- [ ] Dua nama domain yang mengarah ke IP VM, misalnya `llm.perusahaan.internal` (untuk pengguna) dan `llm-admin.perusahaan.internal` (untuk admin).
-- [ ] Sertifikat TLS untuk kedua domain itu: `fullchain.pem` dan `privkey.pem`.
-- [ ] Rentang IP VPN kantor (`VPN_CIDR`, misalnya `10.8.0.0/16`). Hanya alamat dari rentang ini yang boleh membuka domain admin.
+- [ ] IP VM yang bisa dijangkau dari laptop penguji, lewat VPN atau jaringan kantor.
+- [ ] Port 80, 443, dan 8443 VM terbuka untuk jaringan itu, dan VM bisa mengakses `api.openai.com`.
+- [ ] Rentang IP VPN kantor (`VPN_CIDR`, misalnya `10.8.0.0/16`). Hanya alamat dari rentang ini yang boleh membuka alamat admin.
 - [ ] API key OpenAI dari OpenAI Project khusus gateway, supaya biayanya bisa dicocokkan di uji T11.
 
 ### B2. Ambil kode di VM
@@ -225,7 +235,7 @@ cp deploy/env/vm.env.example deploy/env/vm.env
 chmod 600 deploy/env/vm.env
 ```
 
-Buka `deploy/env/vm.env` dengan editor (misalnya `nano deploy/env/vm.env`) dan ganti setiap nilai `ganti-...`:
+Buka `deploy/env/vm.env` dengan editor (misalnya `nano deploy/env/vm.env`) dan isi:
 
 | Variabel | Isi |
 | --- | --- |
@@ -235,37 +245,65 @@ Buka `deploy/env/vm.env` dengan editor (misalnya `nano deploy/env/vm.env`) dan g
 | `DATABASE_URL` | Ganti bagian `ganti-dari-secret-manager` dengan password yang sama dengan `POSTGRES_PASSWORD`. |
 | `REDIS_PASSWORD` | Password acak lain. |
 | `OPENAI_API_KEY` | API key OpenAI Project gateway. |
-| `LLM_HOST`, `LLM_ADMIN_HOST` | Dua domain dari B1. |
+| `VM_TLS` | `internal` |
+| `LLM_HOST` | IP VM, misalnya `10.0.0.5` |
+| `LLM_ADMIN_HOST` | IP VM dengan port 8443, misalnya `10.0.0.5:8443` |
 | `VPN_CIDR` | Rentang IP VPN dari B1. |
-| `TLS_CERT_DIR` | Folder sertifikat, misalnya `/etc/llm-gateway/certs`. |
+| `TLS_CERT_DIR` | Biarkan `/etc/llm-gateway/certs`. Selama memakai IP folder ini kosong, tetapi harus ada (B4). |
+
+Tambahkan juga baris berikut di akhir file, agar test di VM memercayai sertifikat Caddy:
+
+```
+GATEWAY_CA_BUNDLE=/repo/var/caddy-vm-root.crt
+```
 
 Simpan salinan isi file ini di secret manager atau password manager perusahaan. Bila file ini hilang, data gateway tidak bisa dibuka lagi.
 
-### B4. Pasang sertifikat
+### B4. Siapkan folder sertifikat
 
 ```sh
 sudo mkdir -p /etc/llm-gateway/certs
-sudo cp fullchain.pem privkey.pem /etc/llm-gateway/certs/
 ```
 
-Path ini harus sama dengan `TLS_CERT_DIR` di `vm.env`. Bila sertifikat berasal dari CA internal perusahaan, lihat `docs/pilot-checklist.md` langkah 2.2 untuk `GATEWAY_CA_BUNDLE`.
+Folder ini dibiarkan kosong selama memakai IP. Sertifikat perusahaan baru ditaruh di sini saat pindah ke domain.
 
-### B5. Nyalakan gateway
+### B5. Nyalakan gateway dan ambil sertifikat CA
 
 ```sh
 make up ENV=vm
 make ps ENV=vm
+make vm-ca ENV=vm
 ```
 
-Hasil yang diharapkan sama dengan A4, tetapi tanpa `mock-upstream` (lima service).
+Hasil yang diharapkan:
 
-Dari laptop yang terhubung VPN, cek:
+- `make ps` sama dengan A4, tetapi tanpa `mock-upstream` (lima service).
+- `make vm-ca` membuat `var/caddy-vm-root.crt`. Ini sertifikat CA publik buatan Caddy, bukan rahasia. Penguji butuh file ini agar laptopnya memercayai gateway. Isinya tetap sama selama volume Caddy tidak dihapus.
+
+Salin file CA ke laptop Anda, misalnya dengan `scp`:
 
 ```sh
-curl -sS https://llm.perusahaan.internal/health/liveliness
+scp <user>@10.0.0.5:company-ai-platform/var/caddy-vm-root.crt ~/llm-gateway-ca.crt
 ```
 
-Hasil yang diharapkan: jawaban sukses (kode 200).
+Lalu, dari laptop yang terhubung VPN, cek:
+
+```sh
+curl -sS --cacert ~/llm-gateway-ca.crt https://10.0.0.5/health/liveliness
+curl -sS --cacert ~/llm-gateway-ca.crt -o /dev/null -w '%{http_code}\n' https://10.0.0.5/key/list
+curl -sS --cacert ~/llm-gateway-ca.crt -o /dev/null -w '%{http_code}\n' https://10.0.0.5:8443/health/liveliness
+```
+
+Hasil yang diharapkan:
+
+- Perintah pertama: jawaban sukses (kode 200).
+- Perintah kedua: `404`. Route admin memang ditutup di alamat pengguna.
+- Perintah ketiga: `200` bila IP laptop termasuk `VPN_CIDR`, atau `403` bila tidak.
+
+Kalau gagal:
+
+- `curl: (60)` atau `certificate` error: file CA belum dipakai atau salah. Jalankan ulang `make vm-ca ENV=vm` dan salin lagi.
+- `Connection refused` atau timeout: port 443/8443 belum dibuka di firewall VM, atau laptop belum terhubung VPN.
 
 ### B6. Daftarkan team dan user pilot
 
@@ -279,9 +317,33 @@ make plan ENV=vm   # harus: Ringkasan: 0 aksi, tanpa Error 2
 
 Commit perubahan file entitlements agar ada jejak siapa yang mengubah apa.
 
-### B7. Lanjut ke uji T06, T07, dan T11
+### B7. Siapkan laptop penguji
+
+Lakukan di setiap laptop yang akan memakai OpenCode ke gateway:
+
+1. Simpan file CA dari B5, misalnya di `~/llm-gateway-ca.crt`.
+2. Tambahkan ke `~/.zshrc` atau `~/.bashrc`, lalu buka terminal baru:
+
+   ```sh
+   export NODE_EXTRA_CA_CERTS="$HOME/llm-gateway-ca.crt"
+   ```
+
+   OpenCode membaca variabel ini untuk memercayai CA tambahan.
+3. Salin `docs/opencode.example.json` seperti di `docs/onboarding.md`, lalu ganti `baseURL` menjadi `https://10.0.0.5/v1`.
+4. Simpan key pengguna sebagai `COMPANY_LLM_KEY` (lihat `docs/onboarding.md`).
+
+### B8. Lanjut ke uji T06, T07, dan T11
 
 Gateway siap. Ikuti `docs/pilot-checklist.md` mulai dari langkah 2.5 (menerbitkan key smoke), lalu bagian 3 sampai 6.
+
+### Nanti: pindah dari IP ke domain
+
+Saat domain dan sertifikat perusahaan sudah ada:
+
+1. Taruh `fullchain.pem` dan `privkey.pem` (mencakup kedua domain) di `/etc/llm-gateway/certs/`.
+2. Di `deploy/env/vm.env`: set `VM_TLS=company`, isi `LLM_HOST` dan `LLM_ADMIN_HOST` dengan kedua domain (tanpa port), lalu hapus baris `GATEWAY_CA_BUNDLE`. Bila sertifikat perusahaan diterbitkan CA internal, isi `GATEWAY_CA_BUNDLE` dengan CA itu (lihat `docs/pilot-checklist.md` langkah 2.2).
+3. `make up ENV=vm`. Caddy dibuat ulang dengan konfigurasi baru; key, team, dan spend tetap ada.
+4. Penguji mengganti `baseURL` ke domain dan boleh menghapus `NODE_EXTRA_CA_CERTS`. Key mereka tetap berlaku.
 
 ---
 
