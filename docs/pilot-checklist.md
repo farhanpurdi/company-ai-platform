@@ -1,6 +1,6 @@
 # Checklist pilot: deploy VM, smoke, dan Gate 2
 
-Semua perintah dijalankan dari root repo di VM. Host hanya butuh Docker dan `make`. Jangan menjalankan `make down` atau menghapus volume tanpa persetujuan pemilik repo: key, team, dan spend ikut hilang.
+Dasar menyalakan stack, perintah `gatewayctl`, dan troubleshooting ada di `docs/operator-guide.md`. Semua perintah dijalankan dari root repo di VM. Host hanya butuh Docker dan `make`. Jangan menjalankan `make down` atau menghapus volume tanpa persetujuan pemilik repo: key, team, dan spend ikut hilang.
 
 ## 1. Konfirmasi Gate 1
 
