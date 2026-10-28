@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from gatewayctl.client import LiteLLMClient
 from gatewayctl.model import (
+    PROXY_ADMIN_USER_ID,
     ActualKey,
     ActualState,
     BudgetWindow,
@@ -62,6 +63,7 @@ def _members_from_info(team_id: str, info: dict) -> list[MemberSpec]:
         user_id = member.get("user_id")
         if user_id:
             budgets.setdefault(user_id, None)
+    budgets.pop(PROXY_ADMIN_USER_ID, None)
     return [
         MemberSpec(user_id=user_id, team_id=team_id, max_budget_in_team=budget)
         for user_id, budget in budgets.items()
