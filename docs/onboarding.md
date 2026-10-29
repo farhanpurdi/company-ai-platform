@@ -47,7 +47,7 @@ Hasil pengecekan dokumentasi OpenCode (27 Oktober 2026): opsi provider yang terd
 | 401, key tidak valid atau diblokir | Key salah ketik atau sudah diblokir (misalnya setelah offboarding atau key bocor) | Periksa `COMPANY_LLM_KEY`; bila benar, hubungi tim platform |
 | 401/403, pesan akses model (menyebut nama alias) | Team atau key Anda tidak diizinkan memakai alias itu | Pakai alias lain; minta persetujuan tim platform bila butuh akses |
 | 429, rate limit | Request per menit melebihi batas key atau team | Tunggu sebentar lalu ulangi; kurangi permintaan paralel |
-| 422 dengan tipe error `budget_exceeded` (LiteLLM v1.106.4; terverifikasi di uji T02) | Budget harian/bulanan key atau team habis | Tunggu reset jendela budget (UTC) atau minta tim platform menaikkan budget |
+| 422 dengan tipe error `budget_exceeded` (LiteLLM v1.106.4; terverifikasi di uji T02) | Budget harian/bulanan key atau team habis. Bisa juga muncul sebelum budget benar-benar habis: gateway memesan biaya terburuk setiap request lebih dulu, dan menolak request bila sisa budget tidak cukup (sekitar $0.25 untuk Terra dan $0.49 untuk Sol bila klien tidak membatasi panjang jawaban) | Tunggu reset jendela budget (UTC) atau minta tim platform menaikkan budget |
 | 5xx | Masalah di gateway atau di OpenAI | Ulangi beberapa saat lagi; bila berlanjut, laporkan ke tim platform beserta waktu kejadian |
 
 Jangan menempelkan key atau isi prompt rahasia saat melapor; waktu kejadian dan nama alias sudah cukup.
