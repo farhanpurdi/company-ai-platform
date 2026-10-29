@@ -282,7 +282,7 @@ Nilai berikut dipakai pilot hingga dikonfirmasi pada Gate 1:
 | Zona waktu reset budget | UTC |
 | Toleransi overshoot (T03) | 10% dari limit |
 | Target waktu pencabutan key (T05) | 5 menit |
-| Domain internal | `llm.perusahaan.internal`, `llm-admin.perusahaan.internal`. Keputusan pemilik repo 2026-10-28: selama domain dan sertifikat perusahaan belum ada, VM boleh berjalan dengan `VM_TLS=internal` (CA internal Caddy) dan diakses lewat IP (`LLM_HOST=<ip>`, `LLM_ADMIN_HOST=<ip>:8443`). Allowlist inference dan pembatasan VPN pada host admin tetap berlaku |
+| Domain internal | `llm.perusahaan.internal`, `llm-admin.perusahaan.internal`. Keputusan pemilik repo 2026-10-28: selama domain dan sertifikat perusahaan belum ada, VM boleh berjalan dengan `VM_TLS=internal` (CA internal Caddy) dan diakses lewat IP (`LLM_HOST=<ip>`, `LLM_ADMIN_HOST=<ip>:8443`). Allowlist inference dan pembatasan VPN pada host admin tetap berlaku. Keputusan pemilik repo 2026-10-29: sertifikat opsional; `VM_TLS=off` menjalankan kedua host dengan HTTP polos di port `LLM_HTTP_PORT` (admin lewat IP di 8443), sehingga virtual key dan master key lewat jaringan tanpa enkripsi. Allowlist inference, pembatasan VPN pada host admin, dan redaksi access log tetap berlaku di semua mode |
 | CIDR VPN | Diisi di `vm.env` |
 | Versi LiteLLM | v1.93.0-stable terbaru saat implementasi, dipin ke digest. Catatan implementasi: LiteLLM tidak lagi menerbitkan tag `-stable` berversi (tidak ada `v1.93.0-stable`); yang dipin adalah `v1.106.4@sha256:c169fb3a…`, digest yang sama dengan `main-stable` per 2026-10-27 |
 
