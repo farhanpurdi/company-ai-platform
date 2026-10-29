@@ -26,7 +26,7 @@
 
 ## Review Focus
 
-1. **Upgrade dari stack yang masih punya container `caddy`.** Tanpa `--remove-orphans`, container lama tetap hidup dan memegang port host. Ditangkap oleh `test_up_removes_orphaned_caddy` (Task 2) dan cek container di Task 7.
+1. **Upgrade dari stack yang masih punya container `caddy`.** Tanpa `--remove-orphans`, container lama tetap hidup dan memegang port host. Ditangkap oleh `test_up_removes_orphaned_caddy` (Task 2) dan pemeriksaan 7 di gerbang sukses (Task 0b).
 2. **`local.env`/`vm.env` lama yang masih berisi variabel yang dihapus** (`VM_TLS`, `LLM_HOST`, `TLS_CERT_DIR`, dan lainnya). Stack harus tetap bisa dirender dan naik. Ditangkap oleh verifikasi `config -q` dengan `vm.env.example` dari `main` (Task 1 Step 6).
 3. **Profil lokal tidak sengaja terbuka ke LAN** karena mapping tanpa `127.0.0.1`. Ditangkap oleh `test_only_litellm_a_is_published[compose.local.yaml]` (Task 1).
 4. **Edit berikutnya membuka port `litellm-b`, Postgres, atau Redis.** Ditangkap oleh `test_only_litellm_a_is_published` dan `test_base_compose_publishes_nothing` (Task 1).
@@ -36,7 +36,9 @@
 
 | File | Aksi | Task |
 | --- | --- | --- |
-| `.claude/settings.json`, `.claude/hooks/*.sh`, `deploy/tests/test_claude_hooks.py` | Buat | 0 |
+| `.claude/settings.json`, `.claude/hooks/guard-bash.sh`, `.claude/hooks/guard-files.sh`, `deploy/tests/test_claude_hooks.py` | Buat | 0 |
+| `.claude/settings.local.json`, `.claude/hooks/remove-caddy-success.sh` | Buat, tidak di-commit (`.git/info/exclude`) | 0b |
+| `~/.claude/workflows/remove-caddy.js` | Buat, di luar repo | 0b |
 | `deploy/compose.yaml`, `deploy/compose.local.yaml`, `deploy/compose.vm.yaml` | Ubah | 1 |
 | `deploy/env/vm.env.example`, `deploy/env/local.env.example`, `scripts/init-local.sh` | Ubah | 1 |
 | `deploy/caddy/` (tiga file), `deploy/tests/test_caddy_vm_tls.py`, `deploy/tests/test_caddy_log_redaction.py` | Hapus | 1 |
@@ -55,9 +57,9 @@ Urutan dan ketergantungan antartask ada di bagian [Eksekusi dengan Workflow dan 
 
 ### Task 0: Claude hooks penjaga aturan CLAUDE.md
 
-Workflow dan `/goal` menjalankan banyak langkah tanpa diawasi. Hook `PreToolUse` menolak secara deterministik pelanggaran aturan CLAUDE.md yang paling mahal akibatnya, sebelum perintahnya jalan. Hook ini berlaku untuk sesi utama dan subagent. Hook ini bukan pengganti `/goal`: `/goal` sudah memasang Stop hook berbasis prompt miliknya sendiri, jadi tidak perlu Stop hook buatan.
+Workflow dan `/goal` menjalankan banyak langkah tanpa diawasi. Hook `PreToolUse` menolak secara deterministik pelanggaran aturan CLAUDE.md yang paling mahal akibatnya, sebelum perintahnya jalan. Hook ini berlaku untuk sesi utama dan subagent. Keadaan sukses dijaga terpisah oleh Stop hook di Task 0b.
 
-Task ini dikerjakan di sesi utama **sebelum** workflow dijalankan. Setelah selesai, buka `/hooks` atau mulai ulang Claude Code agar hook terbaca.
+Task 0 dan 0b dikerjakan di sesi utama **sebelum** workflow dijalankan. Hook dibaca saat sesi Claude Code dimulai, jadi run dijalankan di sesi baru.
 
 **Files:**
 - Create: `.claude/settings.json`, `.claude/hooks/guard-bash.sh`, `.claude/hooks/guard-files.sh`, `deploy/tests/test_claude_hooks.py`
@@ -144,7 +146,7 @@ def test_settings_wire_both_guards():
         "Bash": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/guard-bash.sh',
         "Read|Edit|Write": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/guard-files.sh',
     }
-    assert "Stop" not in settings["hooks"]  # /goal brings its own Stop hook
+    assert "Stop" not in settings["hooks"]  # the success gate is personal (Task 0b)
 ```
 
 Helper `_run(script: str, tool_input: dict) -> subprocess.CompletedProcess` ada di file test yang sama. `REPO = Path(__file__).resolve().parents[2]`. Kasus antrean `make test` tidak diuji unit, karena butuh proses `pytest` sungguhan; kasus itu diperiksa manual di Step 5.
@@ -178,17 +180,139 @@ Expected: FAIL di semua test `test_claude_hooks.py` dengan `FileNotFoundError` u
 Run: `make unit`
 Expected: PASS, semua test lulus.
 
-- [ ] **Step 5: Aktifkan dan cek manual**
-
-1. Jalankan `/hooks` di Claude Code dan pastikan kedua hook `PreToolUse` tercantum. Kalau belum, mulai ulang Claude Code.
-2. Minta Claude menjalankan `cat deploy/env/local.env`. Hasil yang diharapkan: ditolak dengan pesan `hook: ...`, dan isi file tidak tampil.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add .claude/settings.json .claude/hooks/guard-bash.sh .claude/hooks/guard-files.sh deploy/tests/test_claude_hooks.py
 git commit -m "chore: Claude hooks that block CLAUDE.md violations before they run"
 ```
+
+---
+
+### Task 0b: Gerbang sukses otomatis (Stop hook, tidak di-commit)
+
+Keadaan sukses dibuktikan oleh mesin, tanpa uji manual. Stop hook ini menjalankan sendiri semua pemeriksaan di bawah setiap kali sesi utama hendak berhenti, dan menahan sesi (exit `2`, alasan dikirim balik ke Claude) sampai semuanya lulus. Gerbang ini hanya untuk run ini, jadi disimpan sebagai file pribadi yang dikecualikan git.
+
+Gerbang tidak melepas blokir saat `stop_hook_active` bernilai true. Selama Claude terus memanggil tool, gerbang tetap menahan. Claude Code sendiri melepas blokir setelah delapan kali lanjut berturut-turut tanpa tool call, sehingga kegagalan yang tidak bisa diperbaiki Claude (misalnya Docker mati) tidak membuat sesi macet selamanya.
+
+**Files** (tidak di-commit):
+- `.claude/hooks/remove-caddy-success.sh`, `.claude/settings.local.json`. Keduanya ditambahkan ke `.git/info/exclude`.
+- `~/.claude/workflows/remove-caddy.js` (bagian [Eksekusi](#eksekusi-dengan-workflow-dan-goal)).
+- Penanda aktif `var/remove-caddy.goal`, serta log dan cache di `var/remove-caddy-success/`. Folder `var/` sudah di-gitignore.
+
+**Interfaces:**
+- `remove-caddy-success.sh [--now]`. Input Stop hook JSON dibaca dari stdin bila stdin bukan terminal.
+- Sukses: stdout `SUKSES remove-caddy <sha>`, exit `0`.
+- Gagal: stderr `GAGAL <nomor> <nama>: <petunjuk> (log: var/remove-caddy-success/<file>)`, exit `2`.
+- Skrip tidak pernah mencetak isi env file atau key. Log `make test` hanya berisi nama test dan angka T03/T05/T10.
+
+**Kapan gerbang aktif:**
+
+| Kondisi | Hasil |
+| --- | --- |
+| Tanpa `--now`, dan `var/remove-caddy.goal` tidak ada atau branch bukan `feat/remove-caddy` | exit `0` seketika (gerbang tidak aktif, sesi lain tidak terganggu) |
+| Tanpa `--now`, dan input berisi `background_tasks` yang tidak kosong, atau `pgrep -f 'tests/integration tests/acceptance'` menemukan proses | exit `0` seketika. Workflow masih jalan, dan `make test` tidak boleh berjalan bersamaan. Gerbang dinilai lagi saat sesi berhenti berikutnya. |
+| Lainnya, atau `--now` | jalankan pemeriksaan |
+
+**Pemeriksaan**, berurutan dan berhenti di kegagalan pertama (yang murah dulu):
+
+1. Working tree bersih: `git status --porcelain` kosong.
+2. Struktur:
+   - `deploy/caddy/` dan `tests/acceptance/test_allowlist.py` tidak ada;
+   - `deploy/tests/test_compose_profiles.py`, `deploy/tests/test_docs_access.py`, `deploy/tests/test_claude_hooks.py`, `.claude/settings.json`, `.claude/hooks/guard-bash.sh`, dan `.claude/hooks/guard-files.sh` ada.
+3. File terlarang tidak berubah:
+   - `git diff --quiet main HEAD -- deploy/litellm/config.yaml docs/LLM_GATEWAY_ARCHITECTURE.md docs/LITELLM_IMPLEMENTATION_GUIDE.md docs/superpowers/plans/2026-10-27-litellm-pilot.md`;
+   - `git diff --quiet 4abb0e0 HEAD -- docs/superpowers/specs/`.
+4. `git grep -n -i caddy -- . ':!docs' ':!deploy/tests' ':!.claude'` tidak mengeluarkan apa-apa. Dokumen dijaga `test_docs_access.py`, dan nama test di `deploy/tests` boleh menyebut Caddy.
+5. Cache: bila `var/remove-caddy-success/sha` sama dengan `git rev-parse HEAD`, cetak `SUKSES remove-caddy <sha> (cache)` dan exit `0`.
+6. `make unit` lulus (`unit.log`).
+7. Stack lokal:
+   - `make up` lulus (`up.log`);
+   - `docker ps -aq --filter name=llm-gateway-local-caddy` kosong;
+   - `docker port llm-gateway-local-litellm-a-1` persis `4000/tcp -> 127.0.0.1:4000`;
+   - `docker port llm-gateway-local-litellm-b-1` kosong;
+   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/health/liveliness` mengembalikan `200`.
+8. `make test` lulus (`make-test.log`), dan log berisi `T03 spend=`, `T05 revocation seconds=`, serta `sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs)`. Ambangnya sudah dijaga assertion di test.
+9. Profil VM di project `llm-gateway-vmverify`, dengan override yang ditulis skrip ke `$(mktemp -d)/override.yaml`:
+   - `up -d --wait --wait-timeout 300` lulus;
+   - `ps --format '{{.Service}} {{.Ports}}'` hanya menunjukkan port pada `litellm-a` (`127.0.0.1:14000->4000/tcp`);
+   - `curl` ke `http://127.0.0.1:14000/health/liveliness` mengembalikan `200`;
+   - smoke `4 passed` (`vm-smoke.log`);
+   - `down -v` untuk project itu selalu dijalankan lewat `trap`, juga saat gagal, dan tidak pernah menyentuh `llm-gateway-local`.
+10. Tulis `HEAD` ke `var/remove-caddy-success/sha`, cetak `SUKSES remove-caddy <sha>`, lalu exit `0`.
+
+Override untuk pemeriksaan 9. Path relatif di override dihitung dari `deploy/`, direktori project:
+
+```yaml
+# Verify-only: VM profile against the mock upstream, host port on 127.0.0.1 only.
+services:
+  mock-upstream:
+    image: llm-gateway-mock-upstream
+    build: ../mock_upstream
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/v1/models')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  litellm-a:
+    ports: !override
+      - "127.0.0.1:14000:4000"
+  tools:
+    env_file:
+      - path: env/local.env
+```
+
+Perintah compose pemeriksaan 9 adalah `docker compose -p llm-gateway-vmverify -f deploy/compose.yaml -f deploy/compose.vm.yaml -f "$override" --env-file deploy/env/local.env ...`. Smoke dijalankan seperti ini; key sekali pakai tidak pernah dicetak:
+
+```sh
+run --rm -T -e GATEWAYCTL_OPERATOR=verify@local -e GATEWAYCTL_AUDIT_LOG=/tmp/verify-audit.log tools sh -c '
+  gatewayctl --file entitlements/local.yaml apply --confirm >/dev/null 2>&1
+  SMOKE_KEY=$(gatewayctl --file entitlements/local.yaml key issue --user dev1@local.test --label verify-vm 2>/dev/null)
+  [ -n "$SMOKE_KEY" ] || { echo "key issue gagal" >&2; exit 1; }
+  export SMOKE_KEY
+  pytest -p no:cacheprovider tests/smoke -q'
+```
+
+`.claude/settings.local.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/remove-caddy-success.sh", "timeout": 2400 } ] }
+    ]
+  }
+}
+```
+
+- [ ] **Step 1: Tulis skrip, `settings.local.json`, dan entri exclude**
+
+Skrip memakai POSIX sh dengan `set -u`. Langkah yang dijalankan di dalam skrip memakai `if ! ...; then fail ...; fi`, bukan `set -e`, supaya pesan `GAGAL` selalu tercetak. Lalu:
+
+```bash
+chmod +x .claude/hooks/remove-caddy-success.sh
+printf '%s\n' .claude/settings.local.json .claude/hooks/remove-caddy-success.sh >> .git/info/exclude
+```
+
+- [ ] **Step 2: Pastikan gerbang tidak aktif tanpa penanda**
+
+Run: `printf '{}' | .claude/hooks/remove-caddy-success.sh; echo "exit=$?"`
+Expected: `exit=0` tanpa keluaran lain.
+
+- [ ] **Step 3: Pastikan gerbang mengalah saat workflow berjalan**
+
+Run: `mkdir -p var && touch var/remove-caddy.goal && printf '{"background_tasks":[{"type":"workflow"}]}' | .claude/hooks/remove-caddy-success.sh; echo "exit=$?"; rm var/remove-caddy.goal`
+Expected: `exit=0`, tanpa menjalankan `make`.
+
+- [ ] **Step 4: Pastikan gerbang menolak sebelum Task 1–6 selesai**
+
+Run: `.claude/hooks/remove-caddy-success.sh --now; echo "exit=$?"`
+Expected: `GAGAL 2 struktur: deploy/caddy/ masih ada ...` dan `exit=2`. Working tree bersih karena file lokal dikecualikan, jadi pemeriksaan 1 lulus.
+
+- [ ] **Step 5: Pastikan tidak ada file lokal yang ikut ter-commit**
+
+Run: `git status --porcelain`
+Expected: kosong.
 
 ---
 
@@ -725,94 +849,18 @@ git commit -m "docs: operator, checklist and onboarding without Caddy or TLS"
 
 ### Task 7: Verifikasi menyeluruh dan PR
 
-**Files:** tidak ada perubahan kode. Skrip sementara ditaruh di direktori scratchpad sesi atau di `$(mktemp -d)`, bukan di repo.
+**Files:** tidak ada perubahan kode.
 
 **Interfaces:**
 - Consumes: semua task sebelumnya.
 - Produces: bukti untuk deskripsi PR.
 
-- [ ] **Step 1: Unit dan sisa Caddy**
+- [ ] **Step 1: Jalankan gerbang sukses**
 
-```bash
-make unit
-git grep -n -i caddy -- . ':!docs' ':!deploy/tests' ':!.claude'
-```
+Run: `.claude/hooks/remove-caddy-success.sh --now; echo "exit=$?"`
+Expected: `SUKSES remove-caddy <sha>` dan `exit=0`. Keluaran ini juga menjadi bukti bagi `/goal`. Angka T03, T05, dan T10 untuk PR diambil dari `var/remove-caddy-success/make-test.log`, dan hasil smoke VM dari `vm-smoke.log`.
 
-Expected: `make unit` PASS. `git grep` tidak mengeluarkan apa-apa (exit 1): tidak ada sisa Caddy di kode, Compose, Makefile, skrip, dan test stack. Dokumen dijaga `test_docs_access.py`, dan `deploy/tests` boleh menyebut Caddy di nama test yang memastikan Caddy sudah hilang.
-
-- [ ] **Step 2: Stack lokal dan port**
-
-```bash
-make up
-make ps
-docker ps -a --filter name=llm-gateway-local-caddy --format '{{.Names}}'
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4000/health/liveliness
-docker port llm-gateway-local-litellm-a-1; docker port llm-gateway-local-litellm-b-1
-```
-
-Expected:
-- `make ps`: lima service healthy.
-- Filter `caddy`: kosong.
-- `curl`: `200`.
-- `litellm-a`: `4000/tcp -> 127.0.0.1:4000`. `litellm-b`: tidak ada keluaran.
-
-- [ ] **Step 3: `make test` lengkap**
-
-Run: `make test`
-Expected:
-- Semua `PASSED`.
-- Baris `T03 spend=... overshoot=...` dengan overshoot ≤ 10%, dan baris `T05 revocation seconds=...` dengan nilai ≤ 300.
-- Baris akhir `T10 clean (... sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs)`.
-
-Jangan jalankan bersamaan dengan `make test` lain.
-
-- [ ] **Step 4: Profil VM di project terpisah, dengan upstream mock**
-
-Buat override sementara di luar repo, misalnya `$tmp/vmverify-override.yaml`:
-
-```yaml
-# Verify-only: VM profile against the mock upstream, host port on 127.0.0.1 only.
-services:
-  mock-upstream:
-    image: llm-gateway-mock-upstream
-    build: ../mock_upstream   # relative to deploy/, the project directory
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/v1/models')"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-  litellm-a:
-    ports: !override
-      - "127.0.0.1:14000:4000"
-  tools:
-    env_file:
-      - path: env/local.env
-```
-
-Lalu:
-
-```bash
-v() { docker compose -p llm-gateway-vmverify -f deploy/compose.yaml -f deploy/compose.vm.yaml -f "$tmp/vmverify-override.yaml" --env-file deploy/env/local.env "$@"; }
-v up -d --wait --wait-timeout 300
-v ps --format '{{.Service}} {{.Ports}}'
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:14000/health/liveliness
-v run --rm -T -e GATEWAYCTL_OPERATOR=verify@local -e GATEWAYCTL_AUDIT_LOG=/tmp/verify-audit.log tools sh -c '
-  gatewayctl --file entitlements/local.yaml apply --confirm >/dev/null 2>&1
-  SMOKE_KEY=$(gatewayctl --file entitlements/local.yaml key issue --user dev1@local.test --label "verify-vm" 2>/dev/null)
-  [ -n "$SMOKE_KEY" ] || { echo "key issue gagal" >&2; exit 1; }
-  export SMOKE_KEY
-  pytest -p no:cacheprovider tests/smoke -v 2>&1 | grep -E "PASSED|FAILED|ERROR|passed|failed"'
-v down -v
-rm -rf "$tmp"
-```
-
-Expected:
-- `ps`: hanya `litellm-a` yang punya port (`127.0.0.1:14000->4000/tcp`).
-- `curl`: `200`.
-- Smoke: `4 passed`.
-- `v down -v` hanya menghapus volume project `llm-gateway-vmverify` yang dibuat di langkah ini. Volume `llm-gateway-local_*` tidak tersentuh; cek dengan `docker volume ls | grep llm-gateway-local`.
-
-- [ ] **Step 5: Minta izin push, lalu buat PR**
+- [ ] **Step 2: Minta izin push, lalu buat PR**
 
 Tanyakan dulu ke pemilik repo. Setelah diizinkan:
 
@@ -825,7 +873,7 @@ Deskripsi PR memuat:
 - ringkasan keputusan (spec bagian 10);
 - daftar kontrol yang ditanggalkan;
 - migrasi untuk lokal dan VM;
-- hasil Step 1–4 dengan angka T03, T05, dan T10;
+- hasil gerbang sukses dengan angka T03, T05, T10, dan smoke VM;
 - bagian "Belum diuji": VM sungguhan, OpenCode ke `http://<ip-vm>:4000/v1`, serta smoke T06, T07, dan T11 ke OpenAI asli.
 
 Akhiri deskripsi dengan baris atribusi sesi.
@@ -837,20 +885,22 @@ Akhiri deskripsi dengan baris atribusi sesi.
 ### Urutan dan ketergantungan
 
 ```
-Task 0 (sesi utama, lalu /hooks atau mulai ulang)
-  └─> Task 1 ─> Task 2 ─> Task 3 ─> Task 4 ─> Task 5 ─> Task 6 ─> Task 7 Step 1–4
-                                                              └─> Task 7 Step 5 (sesi utama, izin push)
+Task 0, Task 0b (sesi persiapan)
+  └─ sesi baru: /goal + "touch var/remove-caddy.goal, lalu jalankan workflow remove-caddy"
+       └─> workflow: Task 1 ─> 2 ─> 3 ─> 4 ─> 5 ─> 6 (masing-masing: implementer → reviewer) ─> Task 7 Step 1
+            └─> sesi utama berhenti → Stop hook gerbang sukses → lulus, atau Claude lanjut memperbaiki
+                 └─> Task 7 Step 2 (izin push dan PR dari pemilik repo; di luar keadaan sukses)
 ```
 
 Task 1–6 dijalankan berurutan di satu working tree, bukan paralel:
 - Setiap task menjalankan `make unit` atas seluruh suite, sehingga test RED milik task lain akan membuatnya gagal.
-- Task 3 dan 7 memakai stack lokal yang sama, dan `make test` tidak boleh berjalan bersamaan.
+- Task 3, Task 7, dan gerbang sukses memakai stack lokal yang sama, dan `make test` tidak boleh berjalan bersamaan. Karena itu gerbang mengalah selama workflow masih berjalan.
 
 Paralelisme workflow dipakai untuk review: setiap task diperiksa reviewer independen sebelum task berikutnya mulai.
 
 ### Saved workflow `remove-caddy`
 
-File: `~/.claude/workflows/remove-caddy.js`. Ini workflow pribadi, tidak di-commit, karena hanya dipakai sekali. File ini dibuat di sesi utama setelah Task 0. Isinya mengikuti pola berikut:
+File: `~/.claude/workflows/remove-caddy.js`. Ini workflow pribadi, tidak di-commit, karena hanya dipakai sekali. File ini dibuat di Task 0b. Isinya:
 
 ```js
 export const meta = {
@@ -876,16 +926,22 @@ for (const n of [1, 2, 3, 4, 5, 6]) {
   }
 }
 phase('Verify')
-return await agent(`Run Task 7 Steps 1-4 of ${PLAN}. Report each command's key output (T03, T05, T10 lines, ` +
-  `smoke summary, docker port output). Do not push and do not open a PR.`, { label: 'verify', phase: 'Verify' })
+return await agent(`Run Task 7 Step 1 of ${PLAN}: .claude/hooks/remove-caddy-success.sh --now. If it prints GAGAL, ` +
+  `fix the cause in a new commit (follow the plan and Global Constraints) and run it again, up to 3 times. ` +
+  `Return its final output verbatim. Do not push and do not open a PR.`, { label: 'verify', phase: 'Verify' })
 ```
 
-### Kondisi `/goal` untuk sesi utama
+### Memulai run (satu-satunya langkah manusia)
 
-Setelah Task 0 selesai dan hook aktif, jalankan di sesi utama dengan mode auto agar giliran berikutnya tidak menunggu izin:
+Mulai sesi Claude Code baru di root repo, di branch `feat/remove-caddy`, dengan mode auto. Sesi baru diperlukan agar hook dari Task 0 dan 0b terbaca. Lalu:
 
 ```
-/goal Semua Task 1–6 di docs/superpowers/plans/2026-10-29-remove-caddy.md sudah di-commit di branch feat/remove-caddy (satu commit per task, terlihat di keluaran git log --oneline main..HEAD), dan keluaran terakhir Task 7 Step 1–4 terlihat di percakapan: make unit lulus tanpa test gagal; git grep caddy (dengan pengecualian di Task 7 Step 1) tidak mengeluarkan apa-apa; make test lulus dengan baris T03 overshoot ≤ 10%, T05 ≤ 300 detik, dan "T10 clean" tanpa caddy; profil VM terpisah menunjukkan hanya litellm-a punya port dan smoke 4 passed. Tidak ada git push. Bila sebuah task gagal review tiga kali, berhenti dan laporkan. Atau berhenti setelah 40 giliran.
+/goal Keluaran terakhir .claude/hooks/remove-caddy-success.sh yang dijalankan di sesi ini, langsung atau oleh workflow remove-caddy, adalah baris "SUKSES remove-caddy <sha>" dengan exit=0, dan git log --oneline main..HEAD yang ditampilkan sesudahnya berisi commit Task 0 sampai Task 6. Tidak ada git push. Bila sebuah task gagal review tiga kali, atau GAGAL yang sama muncul tiga kali berturut-turut, berhenti dan laporkan penyebabnya. Atau berhenti setelah 40 giliran.
 ```
 
-Lalu: "jalankan workflow remove-caddy". Evaluator `/goal` hanya membaca percakapan, jadi setiap bukti di atas harus tampil sebagai keluaran perintah di sesi utama. Setelah workflow selesai, Claude menampilkan ulang keluaran kuncinya, lalu Task 7 Step 5 (izin push dan PR) dikerjakan di sesi utama.
+Lalu kirim: `touch var/remove-caddy.goal, lalu jalankan workflow remove-caddy`.
+
+- **Gerbang deterministik (Stop hook Task 0b)** menjalankan semua pemeriksaan sendiri, dan menahan sesi sampai lulus.
+- **`/goal`** menjaga sesi tetap bekerja lintas giliran, dan menilai dari keluaran yang tampil di percakapan.
+- **Push dan PR** tetap di luar keadaan sukses, karena CLAUDE.md mewajibkan izin pemilik repo. Hook `guard-bash.sh` meminta konfirmasi bila ada `git push`.
+- **Setelah selesai:** hapus `var/remove-caddy.goal`, supaya gerbang tidak aktif lagi di sesi berikutnya.
