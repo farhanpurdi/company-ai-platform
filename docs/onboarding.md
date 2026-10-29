@@ -17,12 +17,9 @@ Buka terminal baru agar variabel terbaca. Key bersifat pribadi: jangan dibagikan
 
 Salin `docs/opencode.example.json` ke `opencode.json` (di root proyek) atau ke `~/.config/opencode/opencode.json` (untuk semua proyek). Template memakai `{env:COMPANY_LLM_KEY}` sehingga key tidak tertulis di file.
 
-Selama pilot, gateway bisa diakses lewat IP sebelum domain siap. Bila tim platform memberi alamat IP dan file CA:
+Tim platform memberi alamat gateway, misalnya `http://10.0.0.5:4000/v1`. Ganti `baseURL` di template dengan alamat itu. Tidak ada file sertifikat yang perlu dipasang.
 
-- ganti `baseURL` di template menjadi alamat dari tim platform, misalnya `https://10.0.0.5/v1`;
-- simpan file CA, misalnya di `~/llm-gateway-ca.crt`, lalu tambahkan `export NODE_EXTRA_CA_CERTS="$HOME/llm-gateway-ca.crt"` di `~/.zshrc` atau `~/.bashrc`.
-
-Bila alamat dari tim platform diawali `http://`, misalnya `http://10.0.0.5:8080/v1`, cukup ganti `baseURL`; file CA tidak diperlukan. Pakai alamat itu hanya saat terhubung ke VPN kantor, karena key Anda terkirim tanpa enkripsi.
+Pakai gateway hanya saat terhubung ke jaringan kantor, karena key Anda terkirim tanpa enkripsi.
 
 Lalu pilih model:
 

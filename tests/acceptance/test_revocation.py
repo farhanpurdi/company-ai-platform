@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import time
 
-from helpers import admin, chat, issue_key, replica, run_ctl
+from helpers import REPLICAS, admin, chat, issue_key, replica, run_ctl
 
-REPLICAS = ("litellm-a", "litellm-b")
 REVOCATION_TARGET_S = 300
 POLL_INTERVAL_S = 5
 

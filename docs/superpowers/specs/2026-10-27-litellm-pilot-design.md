@@ -20,7 +20,7 @@ Pilot dinyatakan berhasil bila:
 ### Lingkup
 
 - Docker Compose untuk profil lokal dan VM.
-- `config.yaml` LiteLLM, konfigurasi Caddy.
+- `config.yaml` LiteLLM.
 - CLI Python `gatewayctl` untuk provisioning deklaratif dan lifecycle key.
 - Mock upstream yang meniru OpenAI.
 - Suite uji dan skrip smoke.
@@ -45,19 +45,17 @@ Struktur tidak boleh menghalangi Fase 2: `gatewayctl` hanya bergantung pada URL 
 | Bahasa tool | Python 3.12 | Preferensi tim |
 | Pendekatan reconcile | CLI sendiri (bukan Terraform, bukan apply-ulang-semua) | Tidak menyimpan key di state, mendukung dry-run dan pencabutan |
 | Pengujian | Dua lapis: otomatis terhadap mock upstream, smoke terhadap OpenAI asli | Skenario kegagalan (429/5xx, fallback) dapat diulang tanpa biaya |
-| Reverse proxy | Caddy | TLS internal otomatis di lokal, konfigurasi streaming sederhana. Dapat diganti Nginx tanpa memengaruhi komponen lain |
+| Reverse proxy dan TLS | Tidak ada di repo selama pilot; pengguna terhubung langsung ke `litellm-a` lewat HTTP | TLS dan pengamanan tepi jaringan diurus DevOps di level jaringan. Keputusan pemilik repo dan kontrol yang ditanggalkan ada di bagian 10 |
 
 ## 3. Struktur repo
 
 ```
 company-ai-platform/
 ├── deploy/
-│   ├── compose.yaml             # layanan inti: litellm (2 replika), postgres, redis, caddy
-│   ├── compose.local.yaml       # overlay lokal: + mock-upstream, TLS internal Caddy
-│   ├── compose.vm.yaml          # overlay VM: sertifikat perusahaan, allowlist VPN
+│   ├── compose.yaml             # layanan inti: litellm (2 replika), postgres, redis
+│   ├── compose.local.yaml       # overlay lokal: + mock-upstream, port litellm-a di 127.0.0.1
+│   ├── compose.vm.yaml          # overlay VM: port litellm-a di host
 │   ├── litellm/config.yaml
-│   ├── caddy/Caddyfile.local
-│   ├── caddy/Caddyfile.vm
 │   └── env/local.env.example, env/vm.env.example
 ├── entitlements/
 │   ├── local.yaml               # team/user dummy untuk uji
@@ -85,25 +83,24 @@ company-ai-platform/
 
 | Container | Fungsi | Catatan |
 | --- | --- | --- |
-| `litellm-a`, `litellm-b` | Proxy | Image dipin ke digest (min. v1.93.0-stable). Dua replika juga di lokal agar uji counter dan pemblokiran key mencakup lebih dari satu proses |
+| `litellm-a`, `litellm-b` | Proxy | Image dipin ke digest (min. v1.93.0-stable). Dua replika juga di lokal agar uji counter dan pemblokiran key mencakup lebih dari satu proses. Hanya `litellm-a` membuka port ke host (`LITELLM_PORT`, default 4000): di lokal hanya `127.0.0.1`, di VM semua alamat. `litellm-b` tanpa port host |
 | `postgres` | Key, team, spend | `postgres:16`; tidak membuka port ke host |
 | `redis` | Counter dan rate limit | `redis:7` dengan password; tidak membuka port ke host |
-| `caddy` | Reverse proxy TLS | Load balancing ke kedua replika |
 | `mock-upstream` | Peniru OpenAI | Hanya di profil lokal |
 | `tools` | `gatewayctl` dan pytest | Dijalankan dengan `docker compose run --rm tools ...` |
 
-Semua replika LiteLLM menunggu Postgres dan Redis sehat. Caddy hanya meneruskan trafik ke replika yang lolos healthcheck `/health/liveliness`.
+Semua replika LiteLLM menunggu Postgres dan Redis sehat.
 
-### 4.2 Pemisahan inference dan admin
+### 4.2 Akses ke gateway
 
-Caddy melayani dua hostname:
+Inference dan admin memakai satu alamat, yaitu `litellm-a`: `http://<host>:<LITELLM_PORT>`.
 
-- `llm.<domain>`: hanya path inference yang di-allowlist (`/v1/chat/completions`, `/v1/models`, `/health/liveliness`). Path lain dibalas 404.
-- `llm-admin.<domain>`: Admin UI dan management API. Di VM hanya dari CIDR VPN; di lokal hanya terikat ke `127.0.0.1`.
+- Pengguna memakai `/v1` sebagai `baseURL` OpenCode.
+- Admin UI (`/ui`) dan management API ada di port yang sama, hanya dilindungi master key.
+- Tidak ada allowlist path, pembatasan admin per jaringan, load balancing antarreplika, atau access log reverse proxy di repo (bagian 10).
+- Streaming dilayani LiteLLM langsung, dengan `request_timeout: 600` (bagian 5).
 
-Untuk streaming: `flush_interval -1` dan timeout baca 600 detik. Access log Caddy tidak mencatat header kredensial.
-
-`tools` berbicara langsung ke `http://litellm-a:4000` melalui jaringan internal compose, sehingga tidak perlu lewat VPN.
+`tools` berbicara langsung ke `http://litellm-a:4000` melalui jaringan internal compose: management API untuk `gatewayctl`, dan jalur pengguna untuk uji dan smoke. Uji yang harus mencakup kedua replika (T03, T05, offboarding) juga memanggil `http://litellm-b:4000`.
 
 ### 4.3 Alur
 
@@ -257,7 +254,7 @@ Uji integrasi dan acceptance memakai `entitlements/local.yaml`, menerbitkan key 
 | T05 | Blokir key aktif, lalu kirim request ke kedua replika | Semua ditolak dalam ≤ target waktu (sementara 5 menit); waktu aktual dicatat |
 | T08 | `error_429` count 2, lalu count 5 | Count 2: sukses dengan 3 panggilan upstream. Count 5: error dengan tepat 3 panggilan |
 | T09 | Sol `fail_before_stream`, lalu Sol `fail_mid_stream` | Pertama: jawaban dari Terra. Kedua: stream error tanpa request ke Terra |
-| T10 | Prompt dan key berisi string penanda | String penanda tidak ditemukan di log semua container, tabel spend log Postgres, dan access log Caddy |
+| T10 | Prompt dan key berisi string penanda | String penanda tidak ditemukan di log semua container dan tabel spend log Postgres |
 
 ### 8.3 Smoke terhadap OpenAI asli
 
@@ -282,8 +279,8 @@ Nilai berikut dipakai pilot hingga dikonfirmasi pada Gate 1:
 | Zona waktu reset budget | UTC |
 | Toleransi overshoot (T03) | 10% dari limit |
 | Target waktu pencabutan key (T05) | 5 menit |
-| Domain internal | `llm.perusahaan.internal`, `llm-admin.perusahaan.internal`. Keputusan pemilik repo 2026-10-28: selama domain dan sertifikat perusahaan belum ada, VM boleh berjalan dengan `VM_TLS=internal` (CA internal Caddy) dan diakses lewat IP (`LLM_HOST=<ip>`, `LLM_ADMIN_HOST=<ip>:8443`). Allowlist inference dan pembatasan VPN pada host admin tetap berlaku. Keputusan pemilik repo 2026-10-29: sertifikat opsional; `VM_TLS=off` menjalankan kedua host dengan HTTP polos di port `LLM_HTTP_PORT` (admin lewat IP di 8443), sehingga virtual key dan master key lewat jaringan tanpa enkripsi. Allowlist inference, pembatasan VPN pada host admin, dan redaksi access log tetap berlaku di semua mode |
-| CIDR VPN | Diisi di `vm.env` |
+| Akses jaringan dan TLS | Keputusan pemilik repo 2026-10-29, menggantikan keputusan 2026-10-28 dan 2026-10-29 tentang `VM_TLS`: TLS diurus DevOps di level jaringan, sehingga pilot tidak memakai reverse proxy maupun TLS di repo. Pengguna terhubung langsung ke `litellm-a` lewat HTTP di port `LITELLM_PORT`. Sampai proxy DevOps tersedia, kontrol berikut ditanggalkan: TLS (virtual key dan master key lewat jaringan kantor tanpa enkripsi), allowlist path inference, pembatasan admin ke CIDR VPN (management API dan Admin UI dapat dijangkau dari jaringan kantor, hanya dilindungi master key), load balancing ke kedua replika, dan access log reverse proxy |
+| Syarat keluar pilot | Proxy DevOps di depan VM menyediakan: TLS; allowlist path inference (`/v1/chat/completions`, `/v1/models`, `/health/liveliness`, path lain ditolak); management API dan Admin UI hanya dari jaringan yang dipercaya; load balancing ke kedua replika (port `litellm-b` dibuka saat itu); timeout baca minimal 600 detik tanpa buffering untuk streaming. Header yang membawa key tidak dicatat di access log proxy |
 | Versi LiteLLM | v1.93.0-stable terbaru saat implementasi, dipin ke digest. Catatan implementasi: LiteLLM tidak lagi menerbitkan tag `-stable` berversi (tidak ada `v1.93.0-stable`); yang dipin adalah `v1.106.4@sha256:c169fb3a…`, digest yang sama dengan `main-stable` per 2026-10-27 |
 
 ## 11. Risiko
@@ -295,3 +292,4 @@ Nilai berikut dipakai pilot hingga dikonfirmasi pada Gate 1:
 | Pemblokiran key lambat menyebar antar replika karena cache | T05 diuji dengan dua replika dan waktu aktual dicatat |
 | `apply` gagal di tengah jalan | Aksi idempoten, berurutan, dan tercatat di audit |
 | Retry client berlapis dengan retry gateway | Template OpenCode meminimalkan retry client; didokumentasikan di onboarding |
+| Gateway terbuka di jaringan kantor tanpa TLS, allowlist path, dan pembatasan admin selama pilot | VM on-premise hanya dijangkau dari jaringan kantor; master key hanya di VM dan secret manager; syarat keluar pilot di bagian 10 dipenuhi proxy DevOps sebelum pemakaian lebih luas |

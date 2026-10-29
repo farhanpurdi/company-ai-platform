@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import ssl
 import subprocess
 import uuid
 from pathlib import Path
@@ -17,6 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 LOCAL_ENTITLEMENTS = REPO / "entitlements" / "local.yaml"
 OPERATOR = "test@local"
 TIMEOUT = httpx.Timeout(120.0, connect=10.0)
+REPLICAS = ("litellm-a", "litellm-b")
 
 
 def _env(name: str, default: str | None = None) -> str:
@@ -30,20 +30,13 @@ def _auth(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
-def _verify() -> ssl.SSLContext | bool:
-    bundle = os.environ.get("GATEWAY_CA_BUNDLE")
-    return ssl.create_default_context(cafile=bundle) if bundle else True
-
-
 def gateway(key: str) -> httpx.Client:
-    """Client for the public inference host behind Caddy. httpx never retries by itself."""
-    return httpx.Client(
-        base_url=_env("GATEWAY_URL"), verify=_verify(), headers=_auth(key), timeout=TIMEOUT
-    )
+    """Client for the address users reach: litellm-a directly (spec 4.2). httpx never retries by itself."""
+    return httpx.Client(base_url=_env("GATEWAY_URL"), headers=_auth(key), timeout=TIMEOUT)
 
 
 def replica(name: Literal["litellm-a", "litellm-b"], key: str) -> httpx.Client:
-    """Client for one LiteLLM replica, bypassing Caddy."""
+    """Client for one LiteLLM replica by its service name on the compose network."""
     return httpx.Client(base_url=f"http://{name}:4000", headers=_auth(key), timeout=TIMEOUT)
 
 

@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 
-from helpers import admin, chat, gateway, issue_key
+from helpers import REPLICAS, admin, chat, gateway, issue_key, replica
 
 REQUEST_COST_USD = 0.01
 T02_MAX_REQUESTS = 30
@@ -64,8 +65,11 @@ def _settled_spend(key: str, expected_min: float) -> float:
 
 def test_t03_parallel_overshoot_within_tolerance(applied, mock, capsys):
     key = issue_key("parallel1@local.test")
-    with gateway(key) as client, ThreadPoolExecutor(max_workers=T03_PARALLEL) as pool:
-        responses = list(pool.map(lambda _: chat(client, "company-fast"), range(T03_PARALLEL)))
+    # Spread evenly over both replicas (spec 8.2): without a load balancer the
+    # test does it, so the budget counter is still shared across two processes.
+    with ExitStack() as stack, ThreadPoolExecutor(max_workers=T03_PARALLEL) as pool:
+        clients = [stack.enter_context(replica(name, key)) for name in REPLICAS]
+        responses = list(pool.map(lambda i: chat(clients[i % len(clients)], "company-fast"), range(T03_PARALLEL)))
     upstream = len(mock.requests())
     upstream_cost = upstream * REQUEST_COST_USD
     # The mock knows the true cost; recorded spend can only lag behind it.

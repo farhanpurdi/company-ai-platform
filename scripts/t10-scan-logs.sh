@@ -3,8 +3,8 @@
 # table for the sentinel values written by tests/acceptance/test_log_hygiene.py
 # plus LITELLM_MASTER_KEY and OPENAI_API_KEY from the env file. mock-upstream is
 # excluded: it receives prompts by design. Prints only source names, never values.
-# Before grepping it checks that the T10 traffic actually reached the spend log
-# and the Caddy access log, so a clean result is not just an empty source.
+# Before grepping it checks that the T10 traffic actually reached the spend log,
+# so a clean result is not just an empty source.
 # Usage: scripts/t10-scan-logs.sh ENV   (local | vm)
 set -eu
 
@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 ENV_NAME="${1:-local}"
 ENV_FILE="deploy/env/$ENV_NAME.env"
 SENTINELS="var/t10-sentinels.txt"
-SERVICES="litellm-a litellm-b caddy postgres redis"
+SERVICES="litellm-a litellm-b postgres redis"
 T10_REQUESTS=2
 SPEND_WAIT_S="${T10_SPEND_WAIT_S:-60}"
 
@@ -76,9 +76,6 @@ for svc in $SERVICES; do
 	compose logs --no-color "$svc" >"$work/log" 2>&1 || fail "log $svc tidak dapat dibaca"
 	if grep -qF -f "$work/patterns" "$work/log"; then
 		found="$found $svc"
-	fi
-	if [ "$svc" = caddy ] && ! grep -qF '"uri":"/v1/chat/completions"' "$work/log"; then
-		fail "access log Caddy tidak berisi request /v1/chat/completions"
 	fi
 done
 

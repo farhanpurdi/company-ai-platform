@@ -6,16 +6,15 @@ Dokumen ini untuk tim platform yang menjalankan gateway. Pengguna akhir cukup me
 
 ```
 client (OpenCode/curl)
-  │ HTTPS
+  │ HTTP
   ▼
-Caddy ── host inference (LLM_HOST): hanya /v1/chat/completions, /v1/models, /health/liveliness
-  │      host admin (LLM_ADMIN_HOST): semua route LiteLLM (di VM hanya dari VPN_CIDR)
-  ▼
-litellm-a, litellm-b (round robin) ──► OpenAI (VM) atau mock-upstream (lokal)
+litellm-a (port LITELLM_PORT; litellm-b hanya di jaringan Docker) ──► OpenAI (VM) atau mock-upstream (lokal)
   │
   ├── Postgres: key, team, user, spend
   └── Redis: counter budget dan rate limit lintas replika
 ```
+
+Tidak ada reverse proxy dan TLS di repo ini. Pengguna dan admin terhubung langsung ke `litellm-a`. `litellm-b` adalah replika kedua yang memakai Postgres dan Redis yang sama, tetapi tidak membuka port ke host sampai proxy DevOps dipasang (spec bagian 10).
 
 Alias model yang tersedia: `company-fast` dan `company-coding` (Terra), `company-reasoning` (Sol, fallback ke `company-coding`).
 
@@ -26,9 +25,9 @@ Ada dua profil, dipilih dengan `ENV`:
 | Upstream | `mock-upstream` (selalu menjawab `mock-ok`) | OpenAI asli |
 | Env file | `deploy/env/local.env` (dibuat `make init-local`) | `deploy/env/vm.env` (diisi dari secret manager) |
 | Entitlements | `entitlements/local.yaml` | `entitlements/pilot.yaml` |
-| Alamat | `https://llm.pilot.test:8443`, hanya dari `127.0.0.1` | `https://llm.perusahaan.internal` (port 443, atau `LLM_HTTPS_PORT`), atau `https://<ip>` selama belum ada domain; dengan `VM_TLS=off`, `http://` di port `LLM_HTTP_PORT` |
-| TLS | CA internal Caddy | `VM_TLS=company`: sertifikat perusahaan di `TLS_CERT_DIR`; `VM_TLS=internal`: CA internal Caddy (`make vm-ca ENV=vm`); `VM_TLS=off`: tanpa TLS, key lewat jaringan tanpa enkripsi |
-| Host admin | terbuka dari localhost | hanya dari `VPN_CIDR`, selain itu 403; lewat IP di port 8443 |
+| Alamat | `http://127.0.0.1:4000` (`LITELLM_PORT`, default 4000), hanya dari `127.0.0.1` | `http://<ip-vm>:4000` (`LITELLM_PORT`), terbuka ke jaringan kantor |
+| TLS | tidak ada; TLS diurus DevOps di level jaringan (spec bagian 10) | tidak ada; TLS diurus DevOps di level jaringan (spec bagian 10). Key lewat jaringan kantor tanpa enkripsi |
+| Admin UI dan management API | port yang sama (`/ui`), dilindungi master key; hanya dari `127.0.0.1` | port yang sama (`/ui`), dilindungi master key; terbuka ke jaringan kantor |
 
 Semua perintah dijalankan dari root repo. Host hanya butuh Docker (dengan Compose v2), `make`, dan `git`; `gatewayctl` dan pytest berjalan di container `tools`.
 
@@ -46,7 +45,7 @@ make init-local    # buat deploy/env/local.env berisi secret acak (izin 600)
 Lalu nyalakan stack dan terapkan entitlements:
 
 ```sh
-make up            # build image, nyalakan semua service, tunggu sampai healthy (maks. 5 menit)
+make up            # build image, nyalakan semua service, tunggu sampai healthy (maks. 5 menit), buang container lama (--remove-orphans)
 make ps            # semua service Up; litellm-a, litellm-b, postgres, redis, mock-upstream (healthy)
 make plan          # tampilkan selisih entitlements/local.yaml dengan isi LiteLLM (exit 2 = ada perubahan)
 make apply         # terapkan selisihnya
@@ -71,20 +70,17 @@ Alias key terbentuk dari `<user>-<label>`, di contoh ini `dev1@local.test-coba`.
 
 ### Panggil gateway dengan curl
 
-Di profil lokal, `make local-ca` menyalin sertifikat CA internal Caddy ke `var/caddy-local-root.crt`. `--resolve` mengarahkan `llm.pilot.test` ke `127.0.0.1` tanpa perlu mengubah `/etc/hosts`.
+Di profil lokal, `litellm-a` membuka port `LITELLM_PORT` (default 4000) hanya di `127.0.0.1`, lewat HTTP tanpa sertifikat:
 
 ```sh
-make local-ca
-
-curl -sS --resolve llm.pilot.test:8443:127.0.0.1 --cacert var/caddy-local-root.crt \
-  https://llm.pilot.test:8443/v1/chat/completions \
+curl -sS http://127.0.0.1:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"company-coding","messages":[{"role":"user","content":"halo"}]}'
 ```
 
 Jawaban lokal berisi `"content":"mock-ok"` dan usage 1000 token input + 500 token output (sekitar $0,01 per request di Terra). Dengan `"stream": true`, jawaban dikirim sebagai event SSE.
 
-Untuk cek cepat: `/v1/models` mengembalikan daftar alias yang diizinkan untuk key. Path lain di host inference dibalas 404; ini memang disengaja.
+Untuk cek cepat: `/v1/models` mengembalikan daftar alias yang diizinkan untuk key. Tidak ada allowlist path: route manajemen LiteLLM ada di port yang sama dan hanya bisa dipakai dengan master key.
 
 Selesai mencoba, blokir key dan hapus variabelnya:
 
@@ -97,9 +93,8 @@ unset KEY
 
 Ini hanya untuk memeriksa konfigurasi, karena mock tidak memberikan jawaban yang bermakna dan tidak bisa menjalankan agent. Uji OpenCode yang sebenarnya (T06, T07) dilakukan di VM.
 
-1. Tambahkan `127.0.0.1 llm.pilot.test` ke `/etc/hosts`.
-2. Salin `docs/opencode.example.json` dan ganti `baseURL` menjadi `https://llm.pilot.test:8443/v1`.
-3. Jalankan OpenCode dengan `NODE_EXTRA_CA_CERTS="$PWD/var/caddy-local-root.crt"` dan `COMPANY_LLM_KEY` diisi key dari langkah di atas.
+1. Salin `docs/opencode.example.json` dan ganti `baseURL` menjadi `http://127.0.0.1:4000/v1`. Tidak perlu mengubah `/etc/hosts` dan tidak perlu file CA.
+2. Jalankan OpenCode dengan `COMPANY_LLM_KEY` diisi key dari langkah di atas.
 
 ## 4. Operasi harian
 
@@ -145,7 +140,7 @@ Menghapus member dari file berarti offboarding: semua key yang diterbitkan `gate
 
 ```sh
 make logs ARGS='--tail 100 litellm-a'   # log satu service
-make logs ARGS='-f caddy'               # ikuti access log Caddy
+make logs ARGS='-f litellm-a'           # ikuti log litellm-a, replika yang menerima request pengguna
 make down                               # matikan stack, volume tetap ada
 make up                                 # nyalakan lagi; key, team, dan spend tetap ada
 make config                             # validasi konfigurasi compose tanpa mencetak isinya
@@ -169,20 +164,18 @@ Urutan lengkapnya ada di `docs/pilot-checklist.md` bagian 2–5. Hal yang perlu 
 
 - **Akses dan software:** VM dengan Docker (Compose v2), `make`, dan `git`, plus clone repo ini di branch yang akan diuji.
 - **Secret:** semua nilai di `deploy/env/vm.env.example`, diambil dari secret manager. `OPENAI_API_KEY` sebaiknya milik OpenAI Project khusus gateway, supaya usage di dashboard OpenAI bisa dicocokkan untuk T11.
-- **Sertifikat:** `fullchain.pem` dan `privkey.pem` untuk kedua host, ditaruh di direktori `TLS_CERT_DIR`. Bila CA-nya internal, taruh juga CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE`. Selama belum ada domain, pakai `VM_TLS=internal` dan akses lewat IP (`docs/setup-admin.md` Bagian B). Tanpa sertifikat sama sekali, `VM_TLS=off` menjalankan HTTP polos; isi juga `GATEWAY_URL` (lihat `deploy/env/vm.env.example`).
-- **DNS:** `LLM_HOST` dan `LLM_ADMIN_HOST` mengarah ke IP VM dari jaringan pengguna. Container `tools` tidak butuh DNS ini karena memakai alias jaringan Docker. Lewat IP tidak butuh DNS.
-- **Jaringan:** port 443 terbuka ke VM (plus 8443 untuk host admin lewat IP), `VPN_CIDR` berisi rentang VPN yang benar, dan VM bisa keluar ke `api.openai.com`. Port 80 hanya untuk redirect ke HTTPS. Bila port 80 atau 443 sudah dipakai aplikasi lain di VM, pindahkan dengan `LLM_HTTP_PORT` atau `LLM_HTTPS_PORT` di `vm.env`; alamat HTTPS pengguna lalu memuat port itu. Dengan `VM_TLS=off`, port `LLM_HTTP_PORT` itulah yang dipakai pengguna dan harus terbuka; port HTTPS tidak dipakai, tetapi tetap dipesan Docker sehingga harus kosong di VM. Port 8443 tidak bisa dipindah.
+- **Jaringan:** port `LITELLM_PORT` (default 4000) terbuka dari jaringan kantor di firewall VM dan belum dipakai aplikasi lain, dan VM bisa keluar ke `api.openai.com`. Bila port 4000 sudah dipakai, isi `LITELLM_PORT` di `vm.env` dengan port kosong; alamat pengguna lalu memuat port itu. Container `tools` memanggil `litellm-a` lewat jaringan Docker, jadi tidak bergantung pada port ini.
 - **Operator:** `git config user.email` di VM terisi, atau tambahkan `OPERATOR=...` ke `make apply` dan `make ctl`.
 - **Budget uji:** key smoke dibatasi $2 per 30 hari (`entitlements/pilot.yaml`). Naikkan lewat file entitlements bila sesi manual T06/T07 butuh lebih.
 
-Setelah `make up ENV=vm`, cek dari laptop di jaringan VPN:
+Setelah `make up ENV=vm`, cek dari laptop di jaringan kantor:
 
 ```sh
-curl -sS https://llm.perusahaan.internal/health/liveliness            # 200
-curl -sS -o /dev/null -w '%{http_code}\n' https://llm.perusahaan.internal/key/info   # 404 (route admin ditutup)
+curl -sS http://<ip-vm>:4000/health/liveliness                              # 200
+curl -sS -o /dev/null -w '%{http_code}\n' http://<ip-vm>:4000/key/list      # 401 (management API butuh master key)
 ```
 
-Lewat IP, tambahkan `--cacert` dengan salinan `var/caddy-vm-root.crt` dan ganti nama host dengan IP VM. Dengan `VM_TLS=off`, pakai `http://` dan port `LLM_HTTP_PORT` tanpa `--cacert`.
+Ganti `<ip-vm>` dengan IP VM, dan `4000` dengan `LITELLM_PORT` bila diubah.
 
 Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 
@@ -191,13 +184,10 @@ Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 | Gejala | Penyebab dan solusi |
 | --- | --- |
 | `make up` gagal dengan pesan `... belum diisi` | Variabel di env file kosong. Lokal: jalankan `make init-local`. VM: lengkapi `deploy/env/vm.env`. |
-| `make up ENV=vm` gagal dengan `bind: address already in use` | Port host dipakai aplikasi lain; cek dengan `sudo ss -ltnp 'sport = :80'` (ganti port sesuai pesan). Port 80: isi `LLM_HTTP_PORT` di `vm.env` dengan port kosong, misalnya `8080`. Port 443: isi `LLM_HTTPS_PORT`, misalnya `9443`, juga untuk `VM_TLS=off`. Lalu `make up ENV=vm` lagi. Port 8443 tidak bisa dipindah: hentikan aplikasi yang memakainya. |
+| `make up ENV=vm` gagal dengan `bind: address already in use` | Port `LITELLM_PORT` (default 4000) dipakai aplikasi lain; cek dengan `sudo ss -ltnp \| grep ':4000 '` (ganti port sesuai pesan). Isi `LITELLM_PORT` di `vm.env` dengan port kosong, misalnya `8080`, lalu `make up ENV=vm` lagi. Alamat pengguna dan Admin UI ikut berubah. |
+| Port lama (8443, 80, 443) masih dipakai container gateway setelah update | Container `caddy` dari versi lama masih hidup. `make up` (atau `make up ENV=vm`) memakai `--remove-orphans` sehingga container lama dibuang otomatis; jalankan sekali lagi dengan versi repo ini. Volume lama dibiarkan. |
 | `make up` timeout menunggu healthy | Lihat `make logs ARGS='--tail 200 litellm-a'`. Penyebab umum: `DATABASE_URL` tidak cocok dengan `POSTGRES_PASSWORD`, atau image belum selesai ditarik. |
 | `gatewayctl` exit 3 | LiteLLM belum siap. Tunggu `make ps` menunjukkan healthy, lalu ulangi. |
 | `GATEWAYCTL_OPERATOR wajib diisi` | `git config user.email` kosong; tambahkan `OPERATOR=nama@perusahaan.com`. |
 | `key issue` menolak user | User belum ada di file entitlements atau belum di-`apply`. |
-| curl lokal gagal verifikasi sertifikat | Jalankan `make local-ca` dan pakai `--cacert var/caddy-local-root.crt` serta `--resolve`. |
-| 404 di host inference | Path di luar allowlist. Route manajemen hanya tersedia di host admin. |
-| 403 di host admin (VM) | IP sumber tidak termasuk `VPN_CIDR`. |
-| Error sertifikat ke VM lewat IP (`curl: (60)`, OpenCode menolak koneksi) | Jalankan `make vm-ca ENV=vm`, salin `var/caddy-vm-root.crt` ke laptop, lalu pakai `--cacert` untuk curl dan `NODE_EXTRA_CA_CERTS` untuk OpenCode. |
 | 401, 429, 422 `budget_exceeded` | Lihat tabel error di `docs/onboarding.md`. |

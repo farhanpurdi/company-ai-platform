@@ -1,4 +1,4 @@
-# Local profile: mock upstream instead of OpenAI, Caddy internal TLS bound to
+# Local profile: mock upstream instead of OpenAI; litellm-a published on
 # 127.0.0.1 only.
 
 services:
@@ -12,17 +12,13 @@ services:
       retries: 12
     restart: unless-stopped
 
-  caddy:
+  litellm-a:
     ports:
-      - "127.0.0.1:8443:443"
-    volumes:
-      - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
 
   tools:
     env_file:
       - path: env/local.env
         required: false
     environment:
-      # Copied out of the root-only caddy-data volume by `make local-ca`.
-      GATEWAY_CA_BUNDLE: /repo/var/caddy-local-root.crt
       MOCK_URL: http://mock-upstream:8080

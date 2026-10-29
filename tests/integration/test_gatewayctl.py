@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
 import yaml
 from gatewayctl.client import ApiError
 
-from helpers import LOCAL_ENTITLEMENTS, admin, chat, gateway, issue_key, run_ctl
+from helpers import LOCAL_ENTITLEMENTS, REPLICAS, admin, chat, gateway, issue_key, replica, run_ctl
 
 # Spec 8.1: the mock is reset before every test, so no scenario left by an
 # earlier (interrupted) run can change the traffic these tests send.
@@ -56,19 +57,16 @@ def _write(path: Path, doc: dict) -> Path:
     return path
 
 
-def _wait_for_status(key: str, status: int) -> int:
-    """Poll through Caddy until two consecutive responses (both replicas) return `status`."""
+def _wait_for_status(key: str, status: int) -> dict[str, int]:
+    """Poll every replica directly until all of them return `status` (no load balancer in front)."""
     deadline = time.monotonic() + REVOCATION_TIMEOUT_S
-    streak = 0
-    last = None
-    with gateway(key) as client:
+    with ExitStack() as stack:
+        clients = {name: stack.enter_context(replica(name, key)) for name in REPLICAS}
         while True:
-            last = chat(client, "company-fast").status_code
-            streak = streak + 1 if last == status else 0
-            if streak >= 2 or time.monotonic() >= deadline:
+            last = {name: chat(client, "company-fast").status_code for name, client in clients.items()}
+            if all(code == status for code in last.values()) or time.monotonic() >= deadline:
                 return last
-            if streak == 0:
-                time.sleep(POLL_INTERVAL_S)
+            time.sleep(POLL_INTERVAL_S)
 
 
 def test_removed_member_is_offboarded(applied, tmp_path):
@@ -93,7 +91,7 @@ def test_removed_member_is_offboarded(applied, tmp_path):
         _ok(run_ctl("apply", "--confirm", file=file_without))
         members = admin().team_info("it-developer")["team_memberships"]
         assert "tmp-off@local.test" not in {m["user_id"] for m in members}
-        assert _wait_for_status(key, 401) == 401
+        assert _wait_for_status(key, 401) == {name: 401 for name in REPLICAS}
     finally:
         restore = run_ctl("apply", "--confirm")
     _ok(restore)

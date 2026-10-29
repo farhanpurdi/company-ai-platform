@@ -5,7 +5,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "Company LLM Gateway",
       "options": {
-        "baseURL": "https://llm.perusahaan.internal/v1",
+        "baseURL": "http://<ip-vm>:4000/v1",
         "apiKey": "{env:COMPANY_LLM_KEY}",
         "timeout": 600000,
         "headerTimeout": 600000

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "t10-scan-logs.sh"
-SERVICES = ["litellm-a", "litellm-b", "caddy", "postgres", "redis"]
+SERVICES = ["litellm-a", "litellm-b", "postgres", "redis"]
 
 MASTER = "sk-fakemaster0123456789"
 OPENAI = "sk-mock-fakeopenai01"
@@ -38,7 +38,7 @@ def repo(tmp_path):
     shutil.copy2(SCRIPT, tmp_path / "scripts" / SCRIPT.name)
     (tmp_path / "deploy" / "env").mkdir(parents=True)
     (tmp_path / "deploy" / "env" / "local.env").write_text(
-        f"LITELLM_MASTER_KEY={MASTER}\nOPENAI_API_KEY={OPENAI}\nLLM_HOST=llm.pilot.test\n"
+        f"LITELLM_MASTER_KEY={MASTER}\nOPENAI_API_KEY={OPENAI}\n"
     )
     (tmp_path / "var").mkdir()
     (tmp_path / "var" / "t10-sentinels.txt").write_text(f"{PROMPT}\n{VKEY}\n")
@@ -49,7 +49,6 @@ def repo(tmp_path):
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
     for svc in SERVICES:
         (stub / f"logs-{svc}").write_text(f'{svc}-1  | {{"level": "INFO", "message": "ok"}}\n')
-    (stub / "logs-caddy").write_text('caddy-1  | {"request": {"uri":"/v1/chat/completions"}}\n')
     (stub / "spendlogs").write_text("req-1\tcompany-fast\t0.01\n")
     (stub / "spendrows").write_text("2\n")
     return tmp_path
@@ -91,7 +90,6 @@ def test_clean_logs(repo):
     ("source", "value", "name"),
     [
         ("logs-litellm-b", VKEY, "litellm-b"),
-        ("logs-caddy", PROMPT, "caddy"),
         ("logs-postgres", OPENAI, "postgres"),
         ("spendlogs", MASTER, "LiteLLM_SpendLogs"),
     ],
@@ -136,9 +134,14 @@ def test_t10_traffic_missing_from_spend_log_fails(repo):
     _assert_no_values(result)
 
 
-def test_caddy_access_log_without_inference_request_fails(repo):
-    (repo / "stub" / "logs-caddy").write_text('caddy-1  | {"level": "INFO"}\n')
+def test_clean_result_names_sources(repo):
     result = _run(repo)
-    assert result.returncode == 1
-    assert "Caddy" in result.stderr
-    assert "T10 clean" not in result.stdout
+    assert result.returncode == 0, result.stderr
+    assert "sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs)" in result.stdout
+
+
+def test_caddy_logs_are_not_scanned(repo):
+    # Caddy is gone (spec 10); a leftover container's log is not a gateway source.
+    (repo / "stub" / "logs-caddy").write_text(f"caddy-1  | {PROMPT}\n")
+    result = _run(repo)
+    assert result.returncode == 0, result.stderr

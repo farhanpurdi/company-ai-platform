@@ -1,29 +1,12 @@
-# VM profile: real OpenAI upstream, admin host limited to the VPN CIDR. VM_TLS
-# picks the company certificate, Caddy's internal CA, or plain HTTP (off).
+# VM profile: real OpenAI upstream. Users reach litellm-a directly over HTTP;
+# TLS and the network edge belong to DevOps (spec section 10).
 
 services:
-  caddy:
-    environment:
-      VPN_CIDR: ${VPN_CIDR:?VPN_CIDR belum diisi}
-      VM_TLS: ${VM_TLS:-company}
-      LLM_HTTP_PORT: ${LLM_HTTP_PORT:-80}
-      LLM_HTTPS_PORT: ${LLM_HTTPS_PORT:-443}
+  litellm-a:
     ports:
-      # HTTP: the sites with VM_TLS=off, otherwise only redirects to HTTPS. HTTPS:
-      # unused with VM_TLS=off, but Docker still holds the host port. Both use the
-      # same port inside and outside, so tools reaches the gateway by IP address too.
-      - "${LLM_HTTP_PORT:-80}:${LLM_HTTP_PORT:-80}"
-      - "${LLM_HTTPS_PORT:-443}:${LLM_HTTPS_PORT:-443}"
-      # Admin host when the gateway is reached by IP (LLM_ADMIN_HOST=<ip>:8443).
-      - "8443:8443"
-    volumes:
-      - ./caddy/Caddyfile.vm:/etc/caddy/Caddyfile:ro
-      - ${TLS_CERT_DIR:?TLS_CERT_DIR belum diisi}:/certs:ro
+      - "${LITELLM_PORT:-4000}:4000"
 
   tools:
     env_file:
       - path: env/vm.env
         required: false
-    environment:
-      # VM_TLS=off: set GATEWAY_URL in vm.env to http://<LLM_HOST>:<LLM_HTTP_PORT>.
-      GATEWAY_URL: ${GATEWAY_URL:-https://${LLM_HOST}:${LLM_HTTPS_PORT:-443}}

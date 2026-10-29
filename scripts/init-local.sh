@@ -30,8 +30,6 @@ trap 'rm -f "$tmp"' EXIT
 	echo "DATABASE_URL=postgresql://litellm:$pg_password@postgres:5432/litellm"
 	echo "OPENAI_API_KEY=sk-mock-$(hex 8)"
 	echo "OPENAI_API_BASE=http://mock-upstream:8080/v1"
-	echo "LLM_HOST=llm.pilot.test"
-	echo "LLM_ADMIN_HOST=llm-admin.pilot.test"
 } >"$tmp"
 chmod 600 "$tmp"
 mv "$tmp" "$ENV_FILE"

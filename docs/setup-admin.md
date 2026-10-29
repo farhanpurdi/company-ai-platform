@@ -76,16 +76,17 @@ Cek statusnya:
 make ps
 ```
 
-Hasil yang diharapkan: enam service berstatus `Up`, dan lima di antaranya `(healthy)`:
+Hasil yang diharapkan: lima service, semuanya `Up ... (healthy)`:
 
 ```
-llm-gateway-local-caddy-1           ...  Up ...
 llm-gateway-local-litellm-a-1       ...  Up ... (healthy)
 llm-gateway-local-litellm-b-1       ...  Up ... (healthy)
 llm-gateway-local-mock-upstream-1   ...  Up ... (healthy)
 llm-gateway-local-postgres-1        ...  Up ... (healthy)
 llm-gateway-local-redis-1           ...  Up ... (healthy)
 ```
+
+Gateway sekarang terbuka di `http://127.0.0.1:4000`, hanya dari laptop ini. Port lain di dalam stack (`litellm-b`, database, Redis) tidak dibuka ke host.
 
 Kalau gagal: lihat log dengan `make logs ARGS='--tail 100 litellm-a'`. Bila hanya belum `healthy`, tunggu satu menit lalu cek lagi.
 
@@ -139,17 +140,10 @@ Buat key untuk user uji `dev1@local.test`. Key disimpan ke variabel `KEY` agar t
 KEY=$(make -s ctl ARGS='key issue --user dev1@local.test --label coba')
 ```
 
-Salin sertifikat lokal gateway (sekali saja) supaya HTTPS bisa diverifikasi:
-
-```sh
-make local-ca
-```
-
 Kirim pertanyaan ke gateway:
 
 ```sh
-curl -sS --resolve llm.pilot.test:8443:127.0.0.1 --cacert var/caddy-local-root.crt \
-  https://llm.pilot.test:8443/v1/chat/completions \
+curl -sS http://127.0.0.1:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"company-coding","messages":[{"role":"user","content":"halo"}]}'
 ```
@@ -199,32 +193,33 @@ Jangan pernah menjalankan `docker compose down -v` atau menghapus volume Docker,
 
 Bagian ini memakai pola yang sama dengan Bagian A. Bedanya, semua perintah memakai `ENV=vm` dan rahasianya diisi manual.
 
-Gateway di VM bisa diakses dengan tiga cara:
+Pengguna dan admin terhubung langsung ke container `litellm-a` lewat HTTP, di port `LITELLM_PORT` (default 4000). Tidak ada reverse proxy dan tidak ada sertifikat di VM:
 
-| | Lewat IP, HTTPS | Lewat IP, HTTP polos | Lewat domain, HTTPS |
-| --- | --- | --- | --- |
-| Alamat untuk pengguna | `https://10.0.0.5/v1` | `http://10.0.0.5:8080/v1` | `https://llm.perusahaan.internal/v1` |
-| Alamat admin (hanya dari VPN) | `https://10.0.0.5:8443` | `http://10.0.0.5:8443` | `https://llm-admin.perusahaan.internal` |
-| Sertifikat | Dibuat otomatis oleh Caddy; laptop penguji memercayai CA-nya | Tidak ada | Sertifikat perusahaan |
-| `VM_TLS` di `vm.env` | `internal` | `off` | `company` |
+| | Alamat |
+| --- | --- |
+| Pengguna (`baseURL` OpenCode) | `http://10.0.0.5:4000/v1` |
+| Admin UI (login dengan master key) | `http://10.0.0.5:4000/ui` |
 
-HTTP polos paling mudah disiapkan, tetapi virtual key dan master key lewat jaringan **tanpa enkripsi**: siapa pun yang bisa menyadap jaringan antara laptop dan VM bisa membacanya. Pakai hanya di jaringan yang dipercaya, misalnya VPN. Port `:8080` pada contoh HTTP adalah `LLM_HTTP_PORT` (B3); bila nilainya 80, port tidak perlu ditulis di alamat. Begitu juga HTTPS: bila port 443 dipindah dengan `LLM_HTTPS_PORT`, misalnya ke 9443, alamat pengguna menjadi `https://10.0.0.5:9443/v1`.
+> **Peringatan.** Selama pilot, gateway berjalan **tanpa enkripsi** dan **tanpa allowlist path**:
+>
+> - Virtual key dan master key lewat jaringan tanpa enkripsi. Siapa pun yang bisa menyadap jaringan antara laptop dan VM bisa membacanya.
+> - Management API dan Admin UI ada di port yang sama dan terbuka ke jaringan kantor. Master key menjadi satu-satunya pelindung.
+>
+> Pakai hanya di jaringan kantor, sampai proxy DevOps dipasang di depan VM (spec bagian 10; lihat "Nanti: proxy DevOps di depan VM" di akhir bagian ini).
 
-Langkah di bawah memakai cara **lewat IP**. Langkah yang berbeda untuk HTTP polos ditandai **HTTP polos**. Ganti `10.0.0.5` dengan IP VM Anda. Cara pindah ke HTTPS atau ke domain ada di akhir bagian ini.
+Ganti `10.0.0.5` dengan IP VM Anda di semua contoh. Bila `LITELLM_PORT` diganti (B3), ganti juga `4000` di semua alamat.
+
+VM yang pernah dipasang dengan versi lama: jangan ulangi B2 dan B3, karena `cp` di B3 menimpa `vm.env` beserta `LITELLM_SALT_KEY`. Cek B1, lalu langsung ke B4.
 
 ### B1. Siapkan sebelum mulai
 
 Minta atau siapkan hal berikut:
 
 - [ ] VM Linux dengan Docker (Compose v2), `make`, dan `git` terpasang.
-- [ ] IP VM yang bisa dijangkau dari laptop penguji, lewat VPN atau jaringan kantor.
-- [ ] VM bisa mengakses `api.openai.com`, dan port berikut terbuka untuk jaringan penguji:
-  - HTTPS: port HTTPS (443, atau `LLM_HTTPS_PORT` di B3) dan 8443. Port HTTP hanya untuk redirect ke HTTPS dan tidak wajib dibuka.
-  - **HTTP polos**: port HTTP (80, atau `LLM_HTTP_PORT` di B3) dan 8443.
-- [ ] Port yang dipesan container Caddy belum dipakai aplikasi lain di VM: port HTTP, port HTTPS, dan 8443, juga untuk HTTP polos. Cek dengan `sudo ss -ltnp | grep -E ':(80|443|8443) '`:
-  - Ada baris untuk 80 atau 443: pilih port kosong lain untuk `LLM_HTTP_PORT` atau `LLM_HTTPS_PORT` di B3, misalnya 8080 dan 9443, lalu cek port pengganti itu dengan perintah yang sama.
-  - Ada baris untuk 8443: port ini tidak bisa dipindah. Hentikan aplikasi yang memakainya.
-- [ ] Rentang IP VPN kantor (`VPN_CIDR`, misalnya `10.8.0.0/16`). Hanya alamat dari rentang ini yang boleh membuka alamat admin.
+- [ ] IP VM yang bisa dijangkau dari laptop penguji di jaringan kantor.
+- [ ] VM bisa mengakses `api.openai.com`.
+- [ ] Port `LITELLM_PORT` (default 4000) terbuka dari jaringan kantor di firewall VM.
+- [ ] Port itu belum dipakai aplikasi lain di VM. Cek dengan `sudo ss -ltnp | grep ':4000 '`: hasilnya harus kosong. Kalau ada isinya, pilih port kosong lain untuk `LITELLM_PORT` di B3, lalu cek port pengganti itu dengan perintah yang sama.
 - [ ] API key OpenAI dari OpenAI Project khusus gateway, supaya biayanya bisa dicocokkan di uji T11.
 
 ### B2. Ambil kode di VM
@@ -252,89 +247,50 @@ Buka `deploy/env/vm.env` dengan editor (misalnya `nano deploy/env/vm.env`) dan i
 | `DATABASE_URL` | Ganti bagian `ganti-dari-secret-manager` dengan password yang sama dengan `POSTGRES_PASSWORD`. |
 | `REDIS_PASSWORD` | Password acak lain. |
 | `OPENAI_API_KEY` | API key OpenAI Project gateway. |
-| `VM_TLS` | `internal` (HTTPS), atau `off` untuk **HTTP polos** |
-| `LLM_HOST` | IP VM, misalnya `10.0.0.5` |
-| `LLM_ADMIN_HOST` | IP VM dengan port 8443, misalnya `10.0.0.5:8443` |
-| `LLM_HTTP_PORT` | Biarkan `80`. Bila port 80 sudah dipakai aplikasi lain, isi port kosong lain, misalnya `8080`. Dengan HTTPS port ini hanya untuk redirect; dengan HTTP polos ini port yang dipakai pengguna. |
-| `LLM_HTTPS_PORT` | Biarkan `443`. Bila port 443 sudah dipakai aplikasi lain, isi port kosong lain, misalnya `9443` (jangan `8443`). Dengan HTTP polos port ini tidak dipakai, tetapi tetap dipesan Docker sehingga harus kosong. |
-| `VPN_CIDR` | Rentang IP VPN dari B1. |
-| `TLS_CERT_DIR` | Biarkan `/etc/llm-gateway/certs`. Selama memakai IP folder ini kosong, tetapi harus ada (B4). |
-
-Tambahkan juga satu baris di akhir file, sesuai pilihan `VM_TLS`:
-
-- HTTPS (`internal`), agar test di VM memercayai sertifikat Caddy:
-
-  ```
-  GATEWAY_CA_BUNDLE=/repo/var/caddy-vm-root.crt
-  ```
-
-- **HTTP polos** (`off`), alamat gateway untuk test di VM, sama dengan alamat pengguna tanpa `/v1` (tanpa `:8080` bila `LLM_HTTP_PORT=80`):
-
-  ```
-  GATEWAY_URL=http://10.0.0.5:8080
-  ```
+| `LITELLM_PORT` | Biarkan `4000`. Ganti dengan port kosong lain bila port itu sudah dipakai (B1). |
 
 Simpan salinan isi file ini di secret manager atau password manager perusahaan. Bila file ini hilang, data gateway tidak bisa dibuka lagi.
 
-### B4. Siapkan folder sertifikat
+### B4. Bila VM pernah dipasang dengan versi lama (dengan Caddy)
 
-```sh
-sudo mkdir -p /etc/llm-gateway/certs
-```
+Lewati langkah ini untuk VM baru.
 
-Folder ini dibiarkan kosong selama memakai `VM_TLS=internal` atau `off`. Sertifikat perusahaan baru ditaruh di sini saat pindah ke domain dengan `VM_TLS=company`.
+Versi lama memakai container Caddy di depan gateway, dengan beberapa variabel tambahan untuk TLS dan alamat. Sekarang `deploy/env/vm.env` cukup berisi rahasia (`LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_API_BASE`) dan `LITELLM_PORT`.
 
-### B5. Nyalakan gateway dan ambil sertifikat CA
+1. Ambil kode terbaru dengan `git pull`. File `deploy/env/vm.env` yang sudah ada tetap dipakai; jangan menimpanya dengan `vm.env.example`, dan jangan mengganti `LITELLM_SALT_KEY`.
+2. Tambahkan baris `LITELLM_PORT=4000` di `deploy/env/vm.env`, atau port lain hasil cek di B1.
+3. Baris lain di luar daftar di atas tidak dipakai lagi. Baris itu boleh dihapus, dan tidak mengganggu bila tertinggal.
+4. Lanjut ke B5. `make up ENV=vm` membuang container Caddy lama secara otomatis, sehingga port lamanya dilepas.
+
+Volume Docker lama dibiarkan apa adanya. Jangan menghapus volume apa pun: volume `pgdata` berisi key, team, dan spend. Folder sertifikat lama di VM juga tidak dipakai lagi.
+
+Alamat gateway berubah. Penguji yang sudah memakai alamat lama perlu mengganti `baseURL` seperti di B7.
+
+### B5. Nyalakan gateway dan cek dari laptop
 
 ```sh
 make up ENV=vm
 make ps ENV=vm
-make vm-ca ENV=vm     # hanya untuk HTTPS; lewati untuk HTTP polos
+```
+
+Hasil yang diharapkan: `make ps` sama dengan A4, tetapi tanpa `mock-upstream`. Empat service, semuanya `Up ... (healthy)`: `litellm-a`, `litellm-b`, `postgres`, dan `redis`.
+
+Dari laptop di jaringan kantor, cek:
+
+```sh
+curl -sS http://10.0.0.5:4000/health/liveliness
+curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.5:4000/key/list
 ```
 
 Hasil yang diharapkan:
 
-- `make ps` sama dengan A4, tetapi tanpa `mock-upstream` (lima service).
-- `make vm-ca` membuat `var/caddy-vm-root.crt`. Ini sertifikat CA publik buatan Caddy, bukan rahasia. Penguji butuh file ini agar laptopnya memercayai gateway. Isinya tetap sama selama volume Caddy tidak dihapus.
-
-**HTTP polos**: tidak ada file CA. Lewati `scp` di bawah dan cek dari laptop yang terhubung VPN dengan:
-
-```sh
-curl -sS http://10.0.0.5:8080/health/liveliness
-curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.5:8080/key/list
-curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.5:8443/health/liveliness
-```
-
-Hasil yang diharapkan sama dengan cek HTTPS di bawah.
-
-Untuk HTTPS, salin file CA ke laptop Anda, misalnya dengan `scp`:
-
-```sh
-scp <user>@10.0.0.5:company-ai-platform/var/caddy-vm-root.crt ~/llm-gateway-ca.crt
-```
-
-Lalu, dari laptop yang terhubung VPN, cek (bila `LLM_HTTPS_PORT` bukan 443, tambahkan port itu di dua perintah pertama, misalnya `https://10.0.0.5:9443/health/liveliness`):
-
-```sh
-curl -sS --cacert ~/llm-gateway-ca.crt https://10.0.0.5/health/liveliness
-curl -sS --cacert ~/llm-gateway-ca.crt -o /dev/null -w '%{http_code}\n' https://10.0.0.5/key/list
-curl -sS --cacert ~/llm-gateway-ca.crt -o /dev/null -w '%{http_code}\n' https://10.0.0.5:8443/health/liveliness
-```
-
-Hasil yang diharapkan:
-
-- Perintah pertama: jawaban sukses (kode 200).
-- Perintah kedua: `404`. Route admin memang ditutup di alamat pengguna.
-- Perintah ketiga: `200` bila IP laptop termasuk `VPN_CIDR`, atau `403` bila tidak.
+- Perintah pertama: `"I'm alive!"` (kode 200).
+- Perintah kedua: `401`. Management API butuh master key.
 
 Kalau gagal:
 
-- `make up` gagal dengan `failed to bind port 0.0.0.0:<port>/tcp ... address already in use`: port itu dipakai aplikasi lain. Pindahkan lewat `deploy/env/vm.env`, lalu jalankan `make up ENV=vm` lagi:
-  - Port 80 (atau `LLM_HTTP_PORT` yang dipilih): isi `LLM_HTTP_PORT` dengan port kosong lain, misalnya `8080`. Untuk HTTP polos, sesuaikan juga `GATEWAY_URL` dan alamat pengguna.
-  - Port 443 (atau `LLM_HTTPS_PORT` yang dipilih): isi `LLM_HTTPS_PORT` dengan port kosong lain, misalnya `9443`. Ini juga berlaku untuk HTTP polos. Untuk HTTPS, alamat pengguna ikut berubah.
-  - Port 8443 tidak bisa dipindah: hentikan aplikasi yang memakainya (lihat perintah `ss` di B1).
-- `curl: (60)` atau `certificate` error: file CA belum dipakai atau salah. Jalankan ulang `make vm-ca ENV=vm` dan salin lagi.
-- `Connection refused` atau timeout: port HTTPS dan 8443 (untuk HTTP polos: port HTTP dan 8443) belum dibuka di firewall VM, alamatnya tidak memakai port yang dipilih di `LLM_HTTPS_PORT` atau `LLM_HTTP_PORT`, atau laptop belum terhubung VPN.
+- `make up` gagal dengan `failed to bind port 0.0.0.0:<port>/tcp ... address already in use`: port `LITELLM_PORT` dipakai aplikasi lain. Isi `LITELLM_PORT` di `deploy/env/vm.env` dengan port kosong lain (cek dengan perintah `ss` di B1), lalu jalankan `make up ENV=vm` lagi. Alamat pengguna dan Admin UI ikut berubah.
+- `Connection refused` atau timeout: firewall VM belum membuka port `LITELLM_PORT`, alamatnya tidak memakai port itu, atau laptop tidak terhubung ke jaringan kantor.
 
 ### B6. Daftarkan team dan user pilot
 
@@ -350,39 +306,29 @@ Commit perubahan file entitlements agar ada jejak siapa yang mengubah apa.
 
 ### B7. Siapkan laptop penguji
 
-Lakukan di setiap laptop yang akan memakai OpenCode ke gateway. **HTTP polos**: lewati langkah 1 dan 2, dan pakai `baseURL` `http://10.0.0.5:8080/v1` di langkah 3.
+Lakukan di setiap laptop yang akan memakai OpenCode ke gateway. Tidak ada file sertifikat yang perlu dipasang.
 
-1. Simpan file CA dari B5, misalnya di `~/llm-gateway-ca.crt`.
-2. Tambahkan ke `~/.zshrc` atau `~/.bashrc`, lalu buka terminal baru:
+1. Salin `docs/opencode.example.json` seperti di `docs/onboarding.md`, lalu ganti `baseURL` menjadi `http://10.0.0.5:4000/v1` (dengan port `LITELLM_PORT` bila bukan 4000).
+2. Simpan key pengguna sebagai `COMPANY_LLM_KEY` (lihat `docs/onboarding.md`).
 
-   ```sh
-   export NODE_EXTRA_CA_CERTS="$HOME/llm-gateway-ca.crt"
-   ```
-
-   OpenCode membaca variabel ini untuk memercayai CA tambahan.
-3. Salin `docs/opencode.example.json` seperti di `docs/onboarding.md`, lalu ganti `baseURL` menjadi `https://10.0.0.5/v1`, atau dengan port bila `LLM_HTTPS_PORT` bukan 443, misalnya `https://10.0.0.5:9443/v1`.
-4. Simpan key pengguna sebagai `COMPANY_LLM_KEY` (lihat `docs/onboarding.md`).
+Pakai gateway hanya saat laptop terhubung ke jaringan kantor, karena key terkirim tanpa enkripsi.
 
 ### B8. Lanjut ke uji T06, T07, dan T11
 
 Gateway siap. Ikuti `docs/pilot-checklist.md` mulai dari langkah 2.5 (menerbitkan key smoke), lalu bagian 3 sampai 6.
 
-### Nanti: pindah ke HTTPS atau ke domain
+### Nanti: proxy DevOps di depan VM
 
-Pindah mode tidak menghapus data: key, team, dan spend tetap ada, dan key penguji tetap berlaku.
+HTTP langsung ke `litellm-a` hanya untuk pilot. Sebelum gateway dipakai lebih luas, DevOps memasang proxy di depan VM yang menyediakan (spec bagian 10):
 
-Dari HTTP polos ke HTTPS lewat IP:
+- TLS, sehingga key tidak lagi lewat jaringan tanpa enkripsi.
+- Allowlist tiga path inference: `/v1/chat/completions`, `/v1/models`, dan `/health/liveliness`. Path lain ditolak.
+- Management API dan Admin UI hanya bisa dijangkau dari jaringan yang dipercaya.
+- Load balancing ke kedua replika, `litellm-a` dan `litellm-b`. Saat ini hanya `litellm-a` yang membuka port ke host; port `litellm-b` dibuka lewat perubahan di repo, bukan dengan mengubah VM langsung.
+- Timeout baca minimal 600 detik tanpa buffering, agar jawaban streaming yang panjang tidak terputus.
+- Header yang membawa key tidak dicatat di access log proxy.
 
-1. Di `deploy/env/vm.env`: set `VM_TLS=internal`, hapus baris `GATEWAY_URL`, dan tambahkan `GATEWAY_CA_BUNDLE=/repo/var/caddy-vm-root.crt`.
-2. `make up ENV=vm`, lalu `make vm-ca ENV=vm` dan bagikan file CA seperti di B5.
-3. Penguji mengikuti B7 langkah 1–3 dengan `baseURL` `https://10.0.0.5/v1` (dengan port bila `LLM_HTTPS_PORT` bukan 443).
-
-Saat domain dan sertifikat perusahaan sudah ada:
-
-1. Taruh `fullchain.pem` dan `privkey.pem` (mencakup kedua domain) di `/etc/llm-gateway/certs/`.
-2. Di `deploy/env/vm.env`: set `VM_TLS=company`, isi `LLM_HOST` dan `LLM_ADMIN_HOST` dengan kedua domain (tanpa port), lalu hapus baris `GATEWAY_CA_BUNDLE` dan `GATEWAY_URL`. Bila sertifikat perusahaan diterbitkan CA internal, isi `GATEWAY_CA_BUNDLE` dengan CA itu (lihat `docs/pilot-checklist.md` langkah 2.2).
-3. `make up ENV=vm`. Caddy dibuat ulang dengan konfigurasi baru.
-4. Penguji mengganti `baseURL` ke domain (dengan port bila `LLM_HTTPS_PORT` bukan 443) dan boleh menghapus `NODE_EXTRA_CA_CERTS`.
+Setelah proxy siap, pengguna cukup mengganti `baseURL` ke alamat proxy. Key, team, dan spend tidak berubah, dan key pengguna tetap berlaku.
 
 ---
 
@@ -439,7 +385,7 @@ Ubah `budget`, `rpm_limit`, atau `models` di file entitlements, lalu `make plan`
 
 ```sh
 make logs ARGS='--tail 100 litellm-a'   # log gateway
-make logs ARGS='-f caddy'               # akses masuk (tekan Ctrl+C untuk berhenti)
+make logs ARGS='-f litellm-a'           # ikuti log secara langsung (tekan Ctrl+C untuk berhenti)
 ```
 
 Referensi lengkap perintah, exit code, dan troubleshooting ada di `docs/operator-guide.md`.

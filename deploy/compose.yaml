@@ -81,28 +81,6 @@ services:
       retries: 12
     restart: unless-stopped
 
-  caddy:
-    image: caddy:2
-    environment:
-      LLM_HOST: ${LLM_HOST:?LLM_HOST belum diisi}
-      LLM_ADMIN_HOST: ${LLM_ADMIN_HOST:?LLM_ADMIN_HOST belum diisi}
-    volumes:
-      - caddy-data:/data
-      - caddy-config:/config
-      - ./caddy/common.caddy:/etc/caddy/common.caddy:ro
-    networks:
-      default:
-        # Lets containers (tools) reach the gateway by its public hostnames.
-        aliases:
-          - ${LLM_HOST}
-          - ${LLM_ADMIN_HOST}
-    depends_on:
-      litellm-a:
-        condition: service_started
-      litellm-b:
-        condition: service_started
-    restart: unless-stopped
-
   tools:
     profiles: ["tools"]
     image: llm-gateway-tools
@@ -117,9 +95,8 @@ services:
       - ..:/repo
     environment:
       LITELLM_BASE_URL: http://litellm-a:4000
-      GATEWAY_URL: https://${LLM_HOST}
+      # Users reach litellm-a directly (spec 4.2); tests take the same path.
+      GATEWAY_URL: http://litellm-a:4000
 
 volumes:
   pgdata:
-  caddy-data:
-  caddy-config:
