@@ -1,4 +1,4 @@
-"""Static checks on the VM profile's TLS choice, HTTP port and access by IP address.
+"""Static checks on the VM profile's TLS choice, host ports and access by IP address.
 
 VM_TLS picks the site set in Caddyfile.vm (spec section 10):
   company (default): company certificate from TLS_CERT_DIR.
@@ -20,6 +20,12 @@ TLS = {
     "company": "tls /certs/fullchain.pem /certs/privkey.pem",
     "internal": "tls internal",
 }
+HTTPS_SITES = {
+    "company": ["{$LLM_HOST}:{$LLM_HTTPS_PORT:443}", "{$LLM_ADMIN_HOST}:{$LLM_HTTPS_PORT:443}"],
+    # By IP the admin host carries its own port (LLM_ADMIN_HOST=<ip>:8443).
+    "internal": ["{$LLM_HOST}:{$LLM_HTTPS_PORT:443}", "{$LLM_ADMIN_HOST}"],
+}
+HTTP_REDIRECT = "\t\timport access_log\n\t\tredir https://{host}:{$LLM_HTTPS_PORT:443}{uri} 308\n"
 
 
 def _vm() -> str:
@@ -58,10 +64,23 @@ def test_vm_imports_site_set_selected_by_vm_tls():
 
 @pytest.mark.parametrize("mode", ["company", "internal"])
 def test_https_site_sets(mode):
-    assert _sites(mode) == [
-        ("{$LLM_HOST}", f"\t\t{TLS[mode]}\n\t\timport inference\n"),
-        ("{$LLM_ADMIN_HOST}", f"\t\t{TLS[mode]}\n\t\timport admin\n"),
+    inference, admin = HTTPS_SITES[mode]
+    assert _sites(mode)[:2] == [
+        (inference, f"\t\t{TLS[mode]}\n\t\timport inference\n"),
+        (admin, f"\t\t{TLS[mode]}\n\t\timport admin\n"),
     ]
+
+
+def test_company_sites_leave_http_redirects_to_caddy():
+    # Distinct hostnames: Caddy's own redirect per host keeps LLM_HTTPS_PORT.
+    assert len(_sites("company")) == 2
+
+
+def test_internal_http_redirects_to_inference_site():
+    # Both sites share the IP, so Caddy's own redirects compete for plain HTTP
+    # and the first HTTPS server by listen address wins: with LLM_HTTPS_PORT
+    # above 8443 that is the admin site. Caddy matches explicit sites before them.
+    assert _sites("internal")[2:] == [("http://{$LLM_HOST}", HTTP_REDIRECT)]
 
 
 def test_off_site_set_is_plain_http_without_certificate():
@@ -98,18 +117,31 @@ def test_vm_http_port_follows_llm_http_port():
     assert re.search(r"^\thttp_port \{\$LLM_HTTP_PORT:80\}$", _global_options(), re.M)
 
 
+def test_vm_https_port_is_in_site_addresses_not_global():
+    # With the global https_port Caddy would listen on LLM_HTTPS_PORT but still
+    # redirect HTTP to https://<host>/ (port 443): it assumes that port is mapped
+    # back to 443 outside. A port in the site address goes into the redirect.
+    assert not re.search(r"^\s*https_port ", _global_options(), re.M)
+
+
 def test_compose_vm_caddy_env_and_ports():
     caddy = _compose_vm()["services"]["caddy"]
     assert caddy["environment"]["VM_TLS"] == "${VM_TLS:-company}"
     assert caddy["environment"]["LLM_HTTP_PORT"] == "${LLM_HTTP_PORT:-80}"
-    # The HTTP port is the same inside and outside the container: in IP mode the
-    # tools container reaches the gateway through the published host port.
-    assert caddy["ports"] == ["${LLM_HTTP_PORT:-80}:${LLM_HTTP_PORT:-80}", "443:443", "8443:8443"]
+    assert caddy["environment"]["LLM_HTTPS_PORT"] == "${LLM_HTTPS_PORT:-443}"
+    # HTTP and HTTPS ports are the same inside and outside the container: in IP
+    # mode the tools container reaches the gateway through the published host port.
+    assert caddy["ports"] == [
+        "${LLM_HTTP_PORT:-80}:${LLM_HTTP_PORT:-80}",
+        "${LLM_HTTPS_PORT:-443}:${LLM_HTTPS_PORT:-443}",
+        "8443:8443",
+    ]
 
 
-def test_compose_vm_gateway_url_can_be_set_for_plain_http():
+def test_compose_vm_gateway_url_follows_https_port_unless_set():
+    # GATEWAY_URL in vm.env wins, as plain HTTP (VM_TLS=off) needs.
     tools = _compose_vm()["services"]["tools"]
-    assert tools["environment"]["GATEWAY_URL"] == "${GATEWAY_URL:-https://${LLM_HOST}}"
+    assert tools["environment"]["GATEWAY_URL"] == "${GATEWAY_URL:-https://${LLM_HOST}:${LLM_HTTPS_PORT:-443}}"
 
 
 def test_vm_env_example_documents_tls_choice():
@@ -120,5 +152,7 @@ def test_vm_env_example_documents_tls_choice():
     assert "VM_TLS=off" in text and "GATEWAY_URL=http://10.0.0.5:8080" in text
 
 
-def test_vm_env_example_documents_http_port():
-    assert re.search(r"^LLM_HTTP_PORT=80$", _env_example(), re.M)
+def test_vm_env_example_documents_host_ports():
+    text = _env_example()
+    assert re.search(r"^LLM_HTTP_PORT=80$", text, re.M)
+    assert re.search(r"^LLM_HTTPS_PORT=443$", text, re.M)

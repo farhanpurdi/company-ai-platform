@@ -10,6 +10,8 @@
 	skip_install_trust
 	# HTTP listener inside the container, published on the same host port
 	# (compose.vm.yaml). With VM_TLS=off it serves the sites, otherwise redirects.
+	# The HTTPS port sits in the site addresses instead of a global https_port:
+	# Caddy builds its HTTP redirects as if https_port were 443 outside.
 	http_port {$LLM_HTTP_PORT:80}
 	# A client that dials an IP address sends no SNI, and behind Docker's port
 	# mapping Caddy cannot fall back to the dialled address.
@@ -36,24 +38,30 @@ import /etc/caddy/common.caddy
 }
 
 (sites_company) {
-	{$LLM_HOST} {
+	{$LLM_HOST}:{$LLM_HTTPS_PORT:443} {
 		tls /certs/fullchain.pem /certs/privkey.pem
 		import inference
 	}
-	{$LLM_ADMIN_HOST} {
+	{$LLM_ADMIN_HOST}:{$LLM_HTTPS_PORT:443} {
 		tls /certs/fullchain.pem /certs/privkey.pem
 		import admin
 	}
 }
 
 (sites_internal) {
-	{$LLM_HOST} {
+	{$LLM_HOST}:{$LLM_HTTPS_PORT:443} {
 		tls internal
 		import inference
 	}
 	{$LLM_ADMIN_HOST} {
 		tls internal
 		import admin
+	}
+	# Both sites share the IP, so Caddy's own redirects compete for plain HTTP and
+	# could send it to the admin port; this one is matched before them.
+	http://{$LLM_HOST} {
+		import access_log
+		redir https://{host}:{$LLM_HTTPS_PORT:443}{uri} 308
 	}
 }
 
