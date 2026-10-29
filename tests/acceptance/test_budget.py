@@ -14,6 +14,11 @@ from helpers import REPLICAS, admin, chat, gateway, issue_key, replica
 REQUEST_COST_USD = 0.01
 T02_MAX_REQUESTS = 30
 T02_PAUSE_S = 1.0
+# Budget enforcement fails closed (spec 5): a request is admitted only if its
+# worst-case cost fits. 500 output tokens reserve $0.0075, so the fifth $0.01
+# request still fits $0.05; without max_tokens the 16384-token reservation
+# ($0.25) is larger than the whole budget.
+T02_MAX_TOKENS = 500
 T03_LIMIT_USD = 0.10
 T03_PARALLEL = 20
 T03_TOLERANCE = 0.10
@@ -31,7 +36,7 @@ def test_t02_budget_exhausted(applied, mock):
     last = None
     with gateway(issue_key("budget1@local.test")) as client:
         for _ in range(T02_MAX_REQUESTS):
-            last = chat(client, "company-fast")
+            last = chat(client, "company-fast", max_tokens=T02_MAX_TOKENS)
             if last.status_code != 200:
                 break
             successes += 1
