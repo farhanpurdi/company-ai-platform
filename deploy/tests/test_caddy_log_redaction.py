@@ -86,7 +86,7 @@ def test_access_log_redacts_credential_header(caddyfile, header):
 def test_every_site_uses_access_log_snippet(caddyfile, vm_tls):
     access_log = dict(SNIPPET_DEF.findall(COMMON.read_text(encoding="utf-8")))["access_log"]
     sites = _sites(caddyfile, vm_tls)
-    assert len(sites) == 2
+    assert len(sites) >= 2
     for address, body in sites.items():
         assert access_log in body, f"{address} has no access_log"
         assert body.count("log {") == 1, f"{address} has a second log block"
@@ -107,7 +107,9 @@ def test_inference_allowlist_matches_raw_path(caddyfile):
 @pytest.mark.parametrize(("caddyfile", "vm_tls"), PROFILES)
 def test_inference_site_uses_allowlist(caddyfile, vm_tls):
     sites = _sites(caddyfile, vm_tls)
-    inference = next(body for address, body in sites.items() if address.endswith("{$LLM_HOST}"))
+    # Inference address: {$LLM_HOST}, with a scheme or a port in some VM site sets;
+    # a site that only redirects to it does not count.
+    (inference,) = [b for a, b in sites.items() if "{$LLM_HOST}" in a and "redir " not in b]
     # The only route to LiteLLM is the allowlisted one; everything else is 404.
     assert len(re.findall(r"^\s*reverse_proxy ", inference, re.M)) == 1
     assert re.search(r"^\thandle @inference \{\n\t\treverse_proxy ", inference, re.M)

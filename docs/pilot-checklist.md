@@ -41,7 +41,7 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
 
 ## 4. Manual (T06, T07)
 
-Dengan `docs/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budget $2; hentikan bila mendekati batas). Lewat IP: `baseURL` diganti `https://<ip>/v1` dan `NODE_EXTRA_CA_CERTS` menunjuk ke salinan `var/caddy-vm-root.crt` (`docs/setup-admin.md` B7). Dengan `VM_TLS=off`: `baseURL` `http://<host>:<LLM_HTTP_PORT>/v1`, tanpa `NODE_EXTRA_CA_CERTS`.
+Dengan `docs/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budget $2; hentikan bila mendekati batas). Lewat IP: `baseURL` diganti `https://<ip>/v1` (dengan `:<LLM_HTTPS_PORT>` bila bukan 443) dan `NODE_EXTRA_CA_CERTS` menunjuk ke salinan `var/caddy-vm-root.crt` (`docs/setup-admin.md` B7). Dengan `VM_TLS=off`: `baseURL` `http://<host>:<LLM_HTTP_PORT>/v1`, tanpa `NODE_EXTRA_CA_CERTS`.
 
 - [ ] **T06:** sesi OpenCode >= 10 menit di `company-coding`, lalu di `company-reasoning`. Token mengalir bertahap, tanpa putus atau timeout.
 - [ ] **T07:** tugas agent yang mengedit file (baca file, ubah, jalankan perintah) di kedua alias. Tool call dan hasilnya terproses benar.

@@ -7,11 +7,13 @@ services:
       VPN_CIDR: ${VPN_CIDR:?VPN_CIDR belum diisi}
       VM_TLS: ${VM_TLS:-company}
       LLM_HTTP_PORT: ${LLM_HTTP_PORT:-80}
+      LLM_HTTPS_PORT: ${LLM_HTTPS_PORT:-443}
     ports:
-      # HTTP: the sites with VM_TLS=off, otherwise only redirects to HTTPS. Same
-      # port inside and outside, so tools reaches the gateway by IP address too.
+      # HTTP: the sites with VM_TLS=off, otherwise only redirects to HTTPS. HTTPS:
+      # unused with VM_TLS=off, but Docker still holds the host port. Both use the
+      # same port inside and outside, so tools reaches the gateway by IP address too.
       - "${LLM_HTTP_PORT:-80}:${LLM_HTTP_PORT:-80}"
-      - "443:443"
+      - "${LLM_HTTPS_PORT:-443}:${LLM_HTTPS_PORT:-443}"
       # Admin host when the gateway is reached by IP (LLM_ADMIN_HOST=<ip>:8443).
       - "8443:8443"
     volumes:
@@ -24,4 +26,4 @@ services:
         required: false
     environment:
       # VM_TLS=off: set GATEWAY_URL in vm.env to http://<LLM_HOST>:<LLM_HTTP_PORT>.
-      GATEWAY_URL: ${GATEWAY_URL:-https://${LLM_HOST}}
+      GATEWAY_URL: ${GATEWAY_URL:-https://${LLM_HOST}:${LLM_HTTPS_PORT:-443}}
