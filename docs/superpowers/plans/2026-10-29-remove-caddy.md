@@ -78,7 +78,7 @@ Task 0 dan 0b dikerjakan di sesi utama **sebelum** workflow dijalankan. Hook dib
 | `guard-bash.sh` | `git commit` dengan `--no-verify` atau flag `-n` | tolak |
 | `guard-bash.sh` | `git push` | minta konfirmasi (CLAUDE.md: tidak push tanpa izin) |
 | `guard-bash.sh` | `cat`, `less`, `more`, `head`, `tail`, `grep`, `sed`, `awk`, atau `source` diikuti `deploy/env/<nama>.env` (bukan `.env.example`) di segmen perintah yang sama, tanpa `\|`, `;`, atau `&` di antaranya. `--env-file deploy/env/...` milik `docker compose` tetap boleh. | tolak (isi rahasia tercetak) |
-| `guard-bash.sh` | `LITELLM_LOG=DEBUG` | tolak |
+| `guard-bash.sh` | memasang `LITELLM_LOG=DEBUG`: di awal segmen perintah (boleh didahului `export`, `env`, atau assignment lain) atau lewat `-e`/`--env`. Menyebutnya di pesan commit tetap boleh. | tolak |
 | `guard-bash.sh` | `make test`, atau `pytest` dengan `tests/acceptance`, saat `pgrep -f 'tests/integration tests/acceptance'` menemukan proses lain | tolak (uji acceptance tidak boleh paralel) |
 | `guard-files.sh` | `file_path` berakhiran `deploy/env/<nama>.env` (bukan `.env.example`) | tolak |
 | `guard-files.sh` | konten baru berisi `LITELLM_LOG: DEBUG`, `allow_requests_on_db_unavailable: true`, atau `cache: true` di file di bawah `deploy/` | tolak |
