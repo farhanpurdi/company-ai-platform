@@ -11,7 +11,7 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
 | Zona waktu reset budget | UTC | |
 | Toleransi overshoot (T03) | 10% dari limit | |
 | Target waktu pencabutan key (T05) | 5 menit | |
-| Domain internal | `llm.perusahaan.internal`, `llm-admin.perusahaan.internal` | |
+| Domain internal | `llm.perusahaan.internal`, `llm-admin.perusahaan.internal`; selama belum ada, akses lewat IP dengan `VM_TLS=internal` | |
 | CIDR VPN | diisi di `vm.env` (`VPN_CIDR`) | |
 | Versi LiteLLM | `v1.106.4` dipin digest (tidak ada tag `-stable` berversi) | |
 | Harga Terra/Sol (`model_info`) | Terra $2.50/$15, Sol $5/$30 per 1M token | Diverifikasi ke halaman harga OpenAI: |
@@ -19,8 +19,10 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
 ## 2. Deploy VM
 
 1. `cp deploy/env/vm.env.example deploy/env/vm.env`, isi semua nilai dari secret manager (master key, salt key, password, `OPENAI_API_KEY` milik OpenAI Project khusus gateway, `VPN_CIDR`), lalu `chmod 600 deploy/env/vm.env`. `LITELLM_SALT_KEY` tidak boleh diganti setelah ada data.
-2. Letakkan `fullchain.pem` dan `privkey.pem` di `deploy/certs/` dan set `TLS_CERT_DIR` ke path absolut direktori itu. Folder ini tidak pernah di-commit. Bila sertifikat berasal dari CA internal yang tidak dikenal container `tools`, taruh CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE=/repo/deploy/certs/<ca>.pem` di `vm.env`.
-3. `make up ENV=vm`, lalu `make ps ENV=vm`: semua service `healthy`/`running`.
+2. Sertifikat, pilih salah satu:
+   - **Dengan domain** (`VM_TLS=company`): letakkan `fullchain.pem` dan `privkey.pem` di `deploy/certs/` dan set `TLS_CERT_DIR` ke path absolut direktori itu. Folder ini tidak pernah di-commit. Bila sertifikat berasal dari CA internal yang tidak dikenal container `tools`, taruh CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE=/repo/deploy/certs/<ca>.pem` di `vm.env`.
+   - **Lewat IP, belum ada domain** (`VM_TLS=internal`): set `LLM_HOST=<ip>`, `LLM_ADMIN_HOST=<ip>:8443`, `TLS_CERT_DIR` ke folder kosong yang sudah ada, dan `GATEWAY_CA_BUNDLE=/repo/var/caddy-vm-root.crt`. Port 8443 harus terbuka untuk host admin. Langkah rinci ada di `docs/setup-admin.md` Bagian B.
+3. `make up ENV=vm`, lalu `make ps ENV=vm`: semua service `healthy`/`running`. Lewat IP: lanjutkan dengan `make vm-ca ENV=vm` untuk membuat `var/caddy-vm-root.crt`, lalu bagikan file itu ke laptop penguji.
 4. `make plan ENV=vm` (exit 2 = ada perubahan; tinjau rencananya), lalu `make apply ENV=vm` dengan `OPERATOR` terisi. Di database baru tidak ada aksi destruktif; bila apply meminta `--confirm`, berhenti dan periksa plan. Ulangi `make plan ENV=vm`: harus exit 0.
 5. Terbitkan key smoke: `SMOKE_KEY=$(make -s ctl ENV=vm ARGS='key issue --user smoke@perusahaan.com --label smoke')`. Key hanya tampil sekali; jangan ditulis ke file atau chat.
 
@@ -38,7 +40,7 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
 
 ## 4. Manual (T06, T07)
 
-Dengan `docs/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budget $2; hentikan bila mendekati batas):
+Dengan `docs/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budget $2; hentikan bila mendekati batas). Lewat IP: `baseURL` diganti `https://<ip>/v1` dan `NODE_EXTRA_CA_CERTS` menunjuk ke salinan `var/caddy-vm-root.crt` (`docs/setup-admin.md` B7).
 
 - [ ] **T06:** sesi OpenCode >= 10 menit di `company-coding`, lalu di `company-reasoning`. Token mengalir bertahap, tanpa putus atau timeout.
 - [ ] **T07:** tugas agent yang mengedit file (baca file, ubah, jalankan perintah) di kedua alias. Tool call dan hasilnya terproses benar.

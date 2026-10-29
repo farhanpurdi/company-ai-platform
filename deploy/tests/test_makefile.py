@@ -70,6 +70,16 @@ def test_audit_git_sha_marks_uncommitted_file():
     assert "git status --porcelain" in text and "-dirty" in text, line
 
 
+def test_vm_ca_copies_caddy_root_for_vm_only():
+    # VM_TLS=internal: the tools container and tester laptops trust Caddy's root CA.
+    recipe = _recipe("vm-ca")
+    assert recipe[0] == '@[ "$(ENV)" = vm ] || { echo "vm-ca hanya untuk ENV=vm" >&2; exit 1; }'
+    joined = " ".join(recipe)
+    assert "/data/caddy/pki/authorities/local/root.crt > $(VM_CA).tmp" in joined
+    assert "mv $(VM_CA).tmp $(VM_CA)" in joined
+    assert "VM_CA := var/caddy-vm-root.crt" in MAKEFILE.read_text(encoding="utf-8")
+
+
 def test_tools_runs_as_host_user():
     text = MAKEFILE.read_text(encoding="utf-8")
     assert "export HOST_UID" in text and "export HOST_GID" in text

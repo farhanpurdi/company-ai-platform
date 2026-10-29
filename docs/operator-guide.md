@@ -26,9 +26,9 @@ Ada dua profil, dipilih dengan `ENV`:
 | Upstream | `mock-upstream` (selalu menjawab `mock-ok`) | OpenAI asli |
 | Env file | `deploy/env/local.env` (dibuat `make init-local`) | `deploy/env/vm.env` (diisi dari secret manager) |
 | Entitlements | `entitlements/local.yaml` | `entitlements/pilot.yaml` |
-| Alamat | `https://llm.pilot.test:8443`, hanya dari `127.0.0.1` | `https://llm.perusahaan.internal` (port 443) |
-| TLS | CA internal Caddy | sertifikat perusahaan di `TLS_CERT_DIR` |
-| Host admin | terbuka dari localhost | hanya dari `VPN_CIDR`, selain itu 403 |
+| Alamat | `https://llm.pilot.test:8443`, hanya dari `127.0.0.1` | `https://llm.perusahaan.internal` (port 443), atau `https://<ip>` selama belum ada domain |
+| TLS | CA internal Caddy | `VM_TLS=company`: sertifikat perusahaan di `TLS_CERT_DIR`; `VM_TLS=internal`: CA internal Caddy (`make vm-ca ENV=vm`) |
+| Host admin | terbuka dari localhost | hanya dari `VPN_CIDR`, selain itu 403; lewat IP di port 8443 |
 
 Semua perintah dijalankan dari root repo. Host hanya butuh Docker (dengan Compose v2), `make`, dan `git`; `gatewayctl` dan pytest berjalan di container `tools`.
 
@@ -169,9 +169,9 @@ Urutan lengkapnya ada di `docs/pilot-checklist.md` bagian 2–5. Hal yang perlu 
 
 - **Akses dan software:** VM dengan Docker (Compose v2), `make`, dan `git`, plus clone repo ini di branch yang akan diuji.
 - **Secret:** semua nilai di `deploy/env/vm.env.example`, diambil dari secret manager. `OPENAI_API_KEY` sebaiknya milik OpenAI Project khusus gateway, supaya usage di dashboard OpenAI bisa dicocokkan untuk T11.
-- **Sertifikat:** `fullchain.pem` dan `privkey.pem` untuk kedua host, ditaruh di direktori `TLS_CERT_DIR`. Bila CA-nya internal, taruh juga CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE`.
-- **DNS:** `LLM_HOST` dan `LLM_ADMIN_HOST` mengarah ke IP VM dari jaringan pengguna. Container `tools` tidak butuh DNS ini karena memakai alias jaringan Docker.
-- **Jaringan:** port 80 dan 443 terbuka ke VM, `VPN_CIDR` berisi rentang VPN yang benar, dan VM bisa keluar ke `api.openai.com`.
+- **Sertifikat:** `fullchain.pem` dan `privkey.pem` untuk kedua host, ditaruh di direktori `TLS_CERT_DIR`. Bila CA-nya internal, taruh juga CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE`. Selama belum ada domain, pakai `VM_TLS=internal` dan akses lewat IP (`docs/setup-admin.md` Bagian B).
+- **DNS:** `LLM_HOST` dan `LLM_ADMIN_HOST` mengarah ke IP VM dari jaringan pengguna. Container `tools` tidak butuh DNS ini karena memakai alias jaringan Docker. Lewat IP tidak butuh DNS.
+- **Jaringan:** port 80 dan 443 terbuka ke VM (plus 8443 untuk host admin lewat IP), `VPN_CIDR` berisi rentang VPN yang benar, dan VM bisa keluar ke `api.openai.com`.
 - **Operator:** `git config user.email` di VM terisi, atau tambahkan `OPERATOR=...` ke `make apply` dan `make ctl`.
 - **Budget uji:** key smoke dibatasi $2 per 30 hari (`entitlements/pilot.yaml`). Naikkan lewat file entitlements bila sesi manual T06/T07 butuh lebih.
 
@@ -181,6 +181,8 @@ Setelah `make up ENV=vm`, cek dari laptop di jaringan VPN:
 curl -sS https://llm.perusahaan.internal/health/liveliness            # 200
 curl -sS -o /dev/null -w '%{http_code}\n' https://llm.perusahaan.internal/key/info   # 404 (route admin ditutup)
 ```
+
+Lewat IP, tambahkan `--cacert` dengan salinan `var/caddy-vm-root.crt` dan ganti nama host dengan IP VM.
 
 Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 
@@ -196,4 +198,5 @@ Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 | curl lokal gagal verifikasi sertifikat | Jalankan `make local-ca` dan pakai `--cacert var/caddy-local-root.crt` serta `--resolve`. |
 | 404 di host inference | Path di luar allowlist. Route manajemen hanya tersedia di host admin. |
 | 403 di host admin (VM) | IP sumber tidak termasuk `VPN_CIDR`. |
+| Error sertifikat ke VM lewat IP (`curl: (60)`, OpenCode menolak koneksi) | Jalankan `make vm-ca ENV=vm`, salin `var/caddy-vm-root.crt` ke laptop, lalu pakai `--cacert` untuk curl dan `NODE_EXTRA_CA_CERTS` untuk OpenCode. |
 | 401, 429, 422 `budget_exceeded` | Lihat tabel error di `docs/onboarding.md`. |

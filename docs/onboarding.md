@@ -15,7 +15,14 @@ Buka terminal baru agar variabel terbaca. Key bersifat pribadi: jangan dibagikan
 
 ## 2. Pasang template OpenCode
 
-Salin `docs/opencode.example.json` ke `opencode.json` (di root proyek) atau ke `~/.config/opencode/opencode.json` (untuk semua proyek). Template memakai `{env:COMPANY_LLM_KEY}` sehingga key tidak tertulis di file. Lalu pilih model:
+Salin `docs/opencode.example.json` ke `opencode.json` (di root proyek) atau ke `~/.config/opencode/opencode.json` (untuk semua proyek). Template memakai `{env:COMPANY_LLM_KEY}` sehingga key tidak tertulis di file.
+
+Selama pilot, gateway bisa diakses lewat IP sebelum domain siap. Bila tim platform memberi alamat IP dan file CA:
+
+- ganti `baseURL` di template menjadi alamat dari tim platform, misalnya `https://10.0.0.5/v1`;
+- simpan file CA, misalnya di `~/llm-gateway-ca.crt`, lalu tambahkan `export NODE_EXTRA_CA_CERTS="$HOME/llm-gateway-ca.crt"` di `~/.zshrc` atau `~/.bashrc`.
+
+Lalu pilih model:
 
 | Model di OpenCode | Alias gateway | Kapan dipakai |
 | --- | --- | --- |
