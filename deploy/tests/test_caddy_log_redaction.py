@@ -7,6 +7,7 @@ snippets live in common.caddy, so checks run on each profile with it imported.
 """
 
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,15 @@ CADDY_DIR = Path(__file__).resolve().parents[1] / "caddy"
 CADDYFILES = sorted(CADDY_DIR.glob("Caddyfile.*"))
 COMMON = CADDY_DIR / "common.caddy"
 COMMON_IMPORT = "import /etc/caddy/common.caddy"
+# Each profile, and for Caddyfile.vm each VM_TLS site set.
+PROFILES = [
+    ("Caddyfile.local", "company"),
+    ("Caddyfile.vm", "company"),
+    ("Caddyfile.vm", "internal"),
+    ("Caddyfile.vm", "off"),
+]
+SNIPPET_DEF = re.compile(r"^\(([\w-]+)\) \{\n(.*?)^\}\n", re.M | re.S)
+SNIPPET_IMPORT = re.compile(r"^([ \t]*)import ([\w-]+)$", re.M)
 
 # Canonical (Go http.CanonicalHeaderKey) names, as Caddy logs them.
 CREDENTIAL_HEADERS = [
@@ -32,6 +42,18 @@ def _effective(caddyfile: Path) -> str:
     text = caddyfile.read_text(encoding="utf-8")
     assert text.count(COMMON_IMPORT) == 1, f"{caddyfile.name} must import common.caddy once"
     return text.replace(COMMON_IMPORT, COMMON.read_text(encoding="utf-8"))
+
+
+def _sites(caddyfile: str, vm_tls: str) -> dict[str, str]:
+    """Top-level site blocks as Caddy builds them: every snippet import expanded."""
+    text = _effective(CADDY_DIR / caddyfile).replace("{$VM_TLS:company}", vm_tls)
+    snippets = {name: textwrap.dedent(body) for name, body in SNIPPET_DEF.findall(text)}
+    text = SNIPPET_DEF.sub("", text)
+    while match := SNIPPET_IMPORT.search(text):
+        indent, name = match.groups()
+        body = textwrap.indent(snippets[name], indent).rstrip("\n")
+        text = text[: match.start()] + body + text[match.end() :]
+    return dict(re.findall(r"^(\S+) \{\n(.*?)^\}$", text, re.M | re.S))
 
 
 def _snippet(text: str, name: str) -> str:
@@ -60,13 +82,14 @@ def test_access_log_redacts_credential_header(caddyfile, header):
     assert re.search(rule, snippet, re.M), f"{header} not redacted in {caddyfile.name}"
 
 
-@pytest.mark.parametrize("caddyfile", CADDYFILES, ids=lambda p: p.name)
-def test_every_site_uses_access_log_snippet(caddyfile):
-    text = _effective(caddyfile)
-    assert "\n\tlog {" not in text.replace(_snippet(text, "access_log"), "")
-    sites = re.findall(r"^\{\$LLM(?:_ADMIN)?_HOST\} \{", text, re.M)
+@pytest.mark.parametrize(("caddyfile", "vm_tls"), PROFILES)
+def test_every_site_uses_access_log_snippet(caddyfile, vm_tls):
+    access_log = dict(SNIPPET_DEF.findall(COMMON.read_text(encoding="utf-8")))["access_log"]
+    sites = _sites(caddyfile, vm_tls)
     assert len(sites) == 2
-    assert text.count("import access_log") == len(sites)
+    for address, body in sites.items():
+        assert access_log in body, f"{address} has no access_log"
+        assert body.count("log {") == 1, f"{address} has a second log block"
 
 
 @pytest.mark.parametrize("caddyfile", CADDYFILES, ids=lambda p: p.name)
@@ -81,9 +104,11 @@ def test_inference_allowlist_matches_raw_path(caddyfile):
     ) in text
 
 
-@pytest.mark.parametrize("caddyfile", CADDYFILES, ids=lambda p: p.name)
-def test_inference_site_uses_allowlist(caddyfile):
-    text = caddyfile.read_text(encoding="utf-8")
-    site = text[text.index("{$LLM_HOST} {") : text.index("{$LLM_ADMIN_HOST} {")]
-    assert "import inference_allowlist" in site
-    assert "import litellm_upstream" not in site
+@pytest.mark.parametrize(("caddyfile", "vm_tls"), PROFILES)
+def test_inference_site_uses_allowlist(caddyfile, vm_tls):
+    sites = _sites(caddyfile, vm_tls)
+    inference = next(body for address, body in sites.items() if address.endswith("{$LLM_HOST}"))
+    # The only route to LiteLLM is the allowlisted one; everything else is 404.
+    assert len(re.findall(r"^\s*reverse_proxy ", inference, re.M)) == 1
+    assert re.search(r"^\thandle @inference \{\n\t\treverse_proxy ", inference, re.M)
+    assert re.search(r"^\thandle \{\n\t\trespond 404\n\t\}$", inference, re.M)

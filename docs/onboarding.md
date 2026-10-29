@@ -22,6 +22,8 @@ Selama pilot, gateway bisa diakses lewat IP sebelum domain siap. Bila tim platfo
 - ganti `baseURL` di template menjadi alamat dari tim platform, misalnya `https://10.0.0.5/v1`;
 - simpan file CA, misalnya di `~/llm-gateway-ca.crt`, lalu tambahkan `export NODE_EXTRA_CA_CERTS="$HOME/llm-gateway-ca.crt"` di `~/.zshrc` atau `~/.bashrc`.
 
+Bila alamat dari tim platform diawali `http://`, misalnya `http://10.0.0.5:8080/v1`, cukup ganti `baseURL`; file CA tidak diperlukan. Pakai alamat itu hanya saat terhubung ke VPN kantor, karena key Anda terkirim tanpa enkripsi.
+
 Lalu pilih model:
 
 | Model di OpenCode | Alias gateway | Kapan dipakai |
