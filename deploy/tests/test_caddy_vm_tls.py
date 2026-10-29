@@ -50,6 +50,21 @@ def test_compose_vm_passes_vm_tls_and_publishes_admin_port():
     assert "8443:8443" in caddy["ports"]
 
 
+def test_compose_vm_http_port_is_configurable():
+    # Port 80 only redirects to HTTPS, so a VM where another service holds it can
+    # move it. 443 stays fixed: in IP mode tools reaches https://<ip> through it.
+    doc = yaml.safe_load((DEPLOY / "compose.vm.yaml").read_text(encoding="utf-8"))
+    ports = doc["services"]["caddy"]["ports"]
+    assert "${LLM_HTTP_PORT:-80}:80" in ports
+    assert "80:80" not in ports
+    assert "443:443" in ports
+
+
+def test_vm_env_example_documents_http_port():
+    text = (DEPLOY / "env" / "vm.env.example").read_text(encoding="utf-8")
+    assert re.search(r"^LLM_HTTP_PORT=80$", text, re.M)
+
+
 def test_vm_env_example_documents_tls_choice():
     text = (DEPLOY / "env" / "vm.env.example").read_text(encoding="utf-8")
     assert re.search(r"^VM_TLS=company$", text, re.M)

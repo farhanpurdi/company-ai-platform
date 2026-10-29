@@ -7,7 +7,8 @@ services:
       VPN_CIDR: ${VPN_CIDR:?VPN_CIDR belum diisi}
       VM_TLS: ${VM_TLS:-company}
     ports:
-      - "80:80"
+      # Only redirects to HTTPS; LLM_HTTP_PORT moves it when another service holds 80.
+      - "${LLM_HTTP_PORT:-80}:80"
       - "443:443"
       # Admin host when the gateway is reached by IP (LLM_ADMIN_HOST=<ip>:8443).
       - "8443:8443"
