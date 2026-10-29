@@ -38,7 +38,8 @@ router_settings:
 
 litellm_settings:
   # Per attempt (spec 5). A hung non-streaming call plus retries can outlast
-  # Caddy's 600s read_timeout (spec 4.2); open item for Gate 2, not changed here.
+  # the DevOps proxy's read timeout (at least 600s, spec 10); open item for
+  # Gate 2, not changed here.
   request_timeout: 600
   turn_off_message_logging: true
   json_logs: true
