@@ -55,4 +55,7 @@ general_settings:
     host: os.environ/REDIS_HOST
     port: os.environ/REDIS_PORT
     password: os.environ/REDIS_PASSWORD
+  # Reject a request whose worst-case cost (max_tokens, else 16384 output tokens)
+  # does not fit the remaining budget; otherwise parallel requests overshoot (spec 5).
+  fail_closed_budget_enforcement: true
   # Never enable allow_requests_on_db_unavailable: the gateway must fail closed.
