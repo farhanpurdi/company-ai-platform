@@ -134,6 +134,10 @@ Jangan memanggil management API secara manual. Alurnya selalu:
 3. `make apply` (tambahkan `ARGS=--confirm` bila plan menandai aksi destruktif).
 4. Commit perubahan file entitlements agar audit log menunjuk ke commit yang jelas. Bila file belum di-commit saat apply, audit mencatatnya sebagai `-dirty`.
 
+Budget ditegakkan secara fail-closed (`fail_closed_budget_enforcement`, spec bagian 5). Sebelum meneruskan request, LiteLLM memesan taksiran biaya terburuknya: input ditambah `max_tokens`, atau 16384 token output bila klien tidak mengisi `max_tokens`. Request yang taksirannya tidak muat di sisa budget ditolak dengan `budget_exceeded`.
+
+Akibatnya, pengguna bisa ditolak sebelum budget benar-benar habis. Tanpa `max_tokens`, sisa budget di bawah sekitar $0.25 (`company-fast`, `company-coding`) atau $0.49 (`company-reasoning`) tidak terpakai. Budget key di bawah angka itu menolak semua request tanpa `max_tokens`.
+
 Menghapus member dari file berarti offboarding: semua key yang diterbitkan `gatewayctl` untuk user itu diblokir. Key yang dibuat di luar `gatewayctl` hanya ditandai di `plan` dan perlu diblokir manual (lihat keputusan Gate 2 di deskripsi PR).
 
 ### Log, berhenti, dan menyalakan ulang
@@ -191,3 +195,4 @@ Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 | `GATEWAYCTL_OPERATOR wajib diisi` | `git config user.email` kosong; tambahkan `OPERATOR=nama@perusahaan.com`. |
 | `key issue` menolak user | User belum ada di file entitlements atau belum di-`apply`. |
 | 401, 429, 422 `budget_exceeded` | Lihat tabel error di `docs/onboarding.md`. |
+| 422 `budget_exceeded` padahal spend masih di bawah budget | Sisa budget lebih kecil dari taksiran biaya terburuk satu request (lihat [Mengubah team, member, atau budget](#mengubah-team-member-atau-budget)). Naikkan budget lewat file entitlements, minta pengguna mengisi `max_tokens` yang lebih kecil, atau tunggu window budget di-reset. |
