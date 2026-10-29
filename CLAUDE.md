@@ -13,7 +13,7 @@ Bila kode dan spec berbeda, tanyakan dulu. Jangan mengubah diam-diam perilaku ya
 - Jangan mencetak, menulis ke file, atau meng-commit nilai `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `OPENAI_API_KEY`, password Postgres/Redis, atau virtual key mentah. Rujuk lewat env saja.
 - `deploy/env/*.env` (kecuali `*.env.example`), `var/`, dan `deploy/certs/` tidak pernah di-commit.
 - `LITELLM_SALT_KEY` tidak boleh diganti setelah ada data: kredensial di DB tidak bisa didekripsi lagi. `make init-local` sengaja menolak menimpa `deploy/env/local.env`.
-- Gateway harus fail-closed: jangan aktifkan `allow_requests_on_db_unavailable`, jangan nyalakan response caching, jangan set `LITELLM_LOG=DEBUG` (mencetak body request).
+- Gateway harus fail-closed: jangan aktifkan `allow_requests_on_db_unavailable`, jangan nyalakan response caching, jangan set `LITELLM_LOG=DEBUG` (mencetak body request), dan jangan matikan `fail_closed_budget_enforcement` (tanpa flag itu, request paralel melewati budget).
 - Jangan menulis langsung ke tabel Postgres LiteLLM; perubahan lewat management API.
 - Jangan `docker compose down -v` atau menghapus volume tanpa diminta: key, team, dan spend ikut hilang.
 

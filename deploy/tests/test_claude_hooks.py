@@ -80,6 +80,8 @@ def test_git_push_asks_owner():
         ({"file_path": "/x/deploy/compose.yaml", "old_string": "INFO", "new_string": "  LITELLM_LOG: DEBUG"}, 2),
         ({"file_path": "/x/deploy/litellm/config.yaml", "content": "allow_requests_on_db_unavailable: true"}, 2),
         ({"file_path": "/x/deploy/litellm/config.yaml", "new_string": "  cache: true"}, 2),
+        ({"file_path": "/x/deploy/litellm/config.yaml", "new_string": "  fail_closed_budget_enforcement: false"}, 2),
+        ({"file_path": "/x/deploy/litellm/config.yaml", "new_string": "  fail_closed_budget_enforcement: true"}, 0),
         ({"file_path": "/x/docs/operator-guide.md", "new_string": "Jangan set LITELLM_LOG: DEBUG"}, 0),
         ({"file_path": "/x/deploy/compose.yaml", "new_string": "  LITELLM_LOG: INFO"}, 0),
     ],

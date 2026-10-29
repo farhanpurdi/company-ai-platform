@@ -22,8 +22,8 @@ fi
 # Only the new text counts: an edit may remove a bad setting.
 new_text='"(new_string|content)" *: *"([^"\\]|\\.)*'
 if has '"file_path" *: *"[^"]*/deploy/[^"]*\.ya?ml"' &&
-	has "${new_text}(LITELLM_LOG: *DEBUG|allow_requests_on_db_unavailable: *true|cache: *true)"; then
-	deny "gateway harus fail-closed (CLAUDE.md): tanpa LITELLM_LOG DEBUG, allow_requests_on_db_unavailable, atau response caching"
+	has "${new_text}(LITELLM_LOG: *DEBUG|allow_requests_on_db_unavailable: *true|cache: *true|fail_closed_budget_enforcement: *false)"; then
+	deny "gateway harus fail-closed (CLAUDE.md): tanpa LITELLM_LOG DEBUG, allow_requests_on_db_unavailable, response caching, atau fail_closed_budget_enforcement: false"
 fi
 
 exit 0
