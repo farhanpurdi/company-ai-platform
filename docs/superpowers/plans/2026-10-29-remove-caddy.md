@@ -14,7 +14,7 @@
 
 - Port host hanya untuk `litellm-a`: lokal `127.0.0.1:${LITELLM_PORT:-4000}:4000`, VM `${LITELLM_PORT:-4000}:4000`. `litellm-b`, `postgres`, `redis`, `mock-upstream`, dan `tools` tidak punya `ports`.
 - `tools`: `LITELLM_BASE_URL` dan `GATEWAY_URL` keduanya bernilai tetap `http://litellm-a:4000` di `deploy/compose.yaml`, tidak diambil dari env.
-- Fail-closed tetap berlaku: `LITELLM_LOG: INFO`, tanpa `allow_requests_on_db_unavailable`, tanpa response caching. `deploy/litellm/config.yaml` tidak diubah.
+- Fail-closed tetap berlaku: `LITELLM_LOG: INFO`, tanpa `allow_requests_on_db_unavailable`, tanpa response caching. `deploy/litellm/config.yaml` tidak diubah, kecuali baris komentar. Keputusan pemilik repo 2026-10-30: komentar tentang `read_timeout` Caddy di `litellm_settings` diarahkan ke timeout baca proxy DevOps (spec bagian 10), karena pemeriksaan 4 gerbang sukses menolak kata Caddy di luar `docs`.
 - T03 tetap 20 request paralel dengan toleransi overshoot 10%. Ambang ini tidak dilonggarkan, tidak di-skip, dan tidak di-xfail. T09 tidak disentuh.
 - Volume Docker yang ada (`*_caddy-data`, `*_caddy-config`, `*_pgdata`) tidak dihapus. Jangan pernah menjalankan `docker compose down -v` pada project `llm-gateway-local` atau `llm-gateway-vm`.
 - `docs/*.md` dan pesan untuk operator ditulis dalam bahasa Indonesia; identifier dan komentar kode dalam bahasa Inggris.
@@ -22,7 +22,7 @@
 - Isi `deploy/env/*.env`, master key, salt key, password, dan virtual key tidak pernah dicetak atau di-commit.
 - Satu commit per task di branch `feat/remove-caddy`, selalu lewat hook pre-commit (tanpa `--no-verify`). Tidak push tanpa izin pemilik repo.
 - `make test` tidak boleh berjalan dua kali bersamaan, karena uji acceptance berbagi state stack.
-- File yang tidak boleh diubah: spec (sudah final di `4abb0e0`), `docs/LLM_GATEWAY_ARCHITECTURE.md`, `docs/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/superpowers/plans/2026-10-27-litellm-pilot.md`, `deploy/litellm/config.yaml`.
+- File yang tidak boleh diubah: spec (sudah final di `4abb0e0`), `docs/LLM_GATEWAY_ARCHITECTURE.md`, `docs/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/superpowers/plans/2026-10-27-litellm-pilot.md`, `deploy/litellm/config.yaml` (kecuali baris komentar, lihat di atas).
 
 ## Review Focus
 
@@ -50,6 +50,7 @@
 | `deploy/tests/test_docs_access.py` | Buat (Task 5), tambah parameter (Task 6) | 5, 6 |
 | `docs/setup-admin.md` | Ubah | 5 |
 | `docs/operator-guide.md`, `docs/pilot-checklist.md`, `docs/onboarding.md`, `docs/opencode.example.json` | Ubah | 6 |
+| `deploy/litellm/config.yaml` (baris komentar saja) | Ubah | 7 (perbaikan gerbang) |
 
 Urutan dan ketergantungan antartask ada di bagian [Eksekusi dengan Workflow dan goal](#eksekusi-dengan-workflow-dan-goal).
 
@@ -221,7 +222,8 @@ Gerbang tidak melepas blokir saat `stop_hook_active` bernilai true. Selama Claud
    - `deploy/caddy/` dan `tests/acceptance/test_allowlist.py` tidak ada;
    - `deploy/tests/test_compose_profiles.py`, `deploy/tests/test_docs_access.py`, `deploy/tests/test_claude_hooks.py`, `.claude/settings.json`, `.claude/hooks/guard-bash.sh`, dan `.claude/hooks/guard-files.sh` ada.
 3. File terlarang tidak berubah:
-   - `git diff --quiet main HEAD -- deploy/litellm/config.yaml docs/LLM_GATEWAY_ARCHITECTURE.md docs/LITELLM_IMPLEMENTATION_GUIDE.md docs/superpowers/plans/2026-10-27-litellm-pilot.md`;
+   - `git diff --quiet main HEAD -- docs/LLM_GATEWAY_ARCHITECTURE.md docs/LITELLM_IMPLEMENTATION_GUIDE.md docs/superpowers/plans/2026-10-27-litellm-pilot.md`;
+   - `git diff --quiet -I '^[[:space:]]*#' main HEAD -- deploy/litellm/config.yaml`: hanya baris komentar yang boleh berbeda dari `main`;
    - `git diff --quiet 4abb0e0 HEAD -- docs/superpowers/specs/`.
 4. `git grep -n -i caddy -- . ':!docs' ':!deploy/tests' ':!.claude'` tidak mengeluarkan apa-apa. Dokumen dijaga `test_docs_access.py`, dan nama test di `deploy/tests` boleh menyebut Caddy.
 5. Cache: bila `var/remove-caddy-success/sha` sama dengan `git rev-parse HEAD`, cetak `SUKSES remove-caddy <sha> (cache)` dan exit `0`.
