@@ -1,14 +1,16 @@
-# VM profile: real OpenAI upstream, company certificate (or Caddy's internal CA
-# with VM_TLS=internal), admin host limited to the VPN CIDR.
+# VM profile: real OpenAI upstream, admin host limited to the VPN CIDR. VM_TLS
+# picks the company certificate, Caddy's internal CA, or plain HTTP (off).
 
 services:
   caddy:
     environment:
       VPN_CIDR: ${VPN_CIDR:?VPN_CIDR belum diisi}
       VM_TLS: ${VM_TLS:-company}
+      LLM_HTTP_PORT: ${LLM_HTTP_PORT:-80}
     ports:
-      # Only redirects to HTTPS; LLM_HTTP_PORT moves it when another service holds 80.
-      - "${LLM_HTTP_PORT:-80}:80"
+      # HTTP: the sites with VM_TLS=off, otherwise only redirects to HTTPS. Same
+      # port inside and outside, so tools reaches the gateway by IP address too.
+      - "${LLM_HTTP_PORT:-80}:${LLM_HTTP_PORT:-80}"
       - "443:443"
       # Admin host when the gateway is reached by IP (LLM_ADMIN_HOST=<ip>:8443).
       - "8443:8443"
@@ -20,3 +22,6 @@ services:
     env_file:
       - path: env/vm.env
         required: false
+    environment:
+      # VM_TLS=off: set GATEWAY_URL in vm.env to http://<LLM_HOST>:<LLM_HTTP_PORT>.
+      GATEWAY_URL: ${GATEWAY_URL:-https://${LLM_HOST}}

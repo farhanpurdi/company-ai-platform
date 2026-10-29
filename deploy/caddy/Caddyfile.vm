@@ -1,10 +1,16 @@
-# VM profile: admin host only from the VPN. TLS comes from VM_TLS:
+# VM profile: admin host only from the VPN. VM_TLS picks the site set:
 #   company (default): company certificate from TLS_CERT_DIR.
 #   internal: Caddy's own CA, for access by IP address until there is a domain;
 #   LLM_ADMIN_HOST then carries port 8443 because both sites share the IP.
-# Shared upstream, access log and allowlist snippets live in common.caddy.
+#   off: plain HTTP without a certificate; keys cross the network unencrypted
+#   (owner decision, spec section 10).
+# Every set shares the inference and admin rules below. Upstream, access log and
+# allowlist snippets live in common.caddy.
 {
 	skip_install_trust
+	# HTTP listener inside the container, published on the same host port
+	# (compose.vm.yaml). With VM_TLS=off it serves the sites, otherwise redirects.
+	http_port {$LLM_HTTP_PORT:80}
 	# A client that dials an IP address sends no SNI, and behind Docker's port
 	# mapping Caddy cannot fall back to the dialled address.
 	default_sni {$LLM_HOST}
@@ -12,22 +18,12 @@
 
 import /etc/caddy/common.caddy
 
-(tls_company) {
-	tls /certs/fullchain.pem /certs/privkey.pem
-}
-
-(tls_internal) {
-	tls internal
-}
-
-{$LLM_HOST} {
-	import tls_{$VM_TLS:company}
+(inference) {
 	import access_log
 	import inference_allowlist
 }
 
-{$LLM_ADMIN_HOST} {
-	import tls_{$VM_TLS:company}
+(admin) {
 	import access_log
 
 	@vpn remote_ip {$VPN_CIDR}
@@ -38,3 +34,36 @@ import /etc/caddy/common.caddy
 		respond 403
 	}
 }
+
+(sites_company) {
+	{$LLM_HOST} {
+		tls /certs/fullchain.pem /certs/privkey.pem
+		import inference
+	}
+	{$LLM_ADMIN_HOST} {
+		tls /certs/fullchain.pem /certs/privkey.pem
+		import admin
+	}
+}
+
+(sites_internal) {
+	{$LLM_HOST} {
+		tls internal
+		import inference
+	}
+	{$LLM_ADMIN_HOST} {
+		tls internal
+		import admin
+	}
+}
+
+(sites_off) {
+	http://{$LLM_HOST} {
+		import inference
+	}
+	http://{$LLM_ADMIN_HOST} {
+		import admin
+	}
+}
+
+import sites_{$VM_TLS:company}
