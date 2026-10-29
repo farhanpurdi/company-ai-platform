@@ -216,7 +216,8 @@ Minta atau siapkan hal berikut:
 
 - [ ] VM Linux dengan Docker (Compose v2), `make`, dan `git` terpasang.
 - [ ] IP VM yang bisa dijangkau dari laptop penguji, lewat VPN atau jaringan kantor.
-- [ ] Port 80, 443, dan 8443 VM terbuka untuk jaringan itu, dan VM bisa mengakses `api.openai.com`.
+- [ ] Port 443 dan 8443 VM terbuka untuk jaringan itu, dan VM bisa mengakses `api.openai.com`. Port 80 hanya untuk redirect ke HTTPS dan tidak wajib dibuka.
+- [ ] Port 443 dan 8443 belum dipakai aplikasi lain di VM. Cek dengan `sudo ss -ltnp | grep -E ':(80|443|8443) '`: tidak boleh ada baris untuk 443 dan 8443. Bila port 80 sudah dipakai, isi `LLM_HTTP_PORT` di B3.
 - [ ] Rentang IP VPN kantor (`VPN_CIDR`, misalnya `10.8.0.0/16`). Hanya alamat dari rentang ini yang boleh membuka alamat admin.
 - [ ] API key OpenAI dari OpenAI Project khusus gateway, supaya biayanya bisa dicocokkan di uji T11.
 
@@ -248,6 +249,7 @@ Buka `deploy/env/vm.env` dengan editor (misalnya `nano deploy/env/vm.env`) dan i
 | `VM_TLS` | `internal` |
 | `LLM_HOST` | IP VM, misalnya `10.0.0.5` |
 | `LLM_ADMIN_HOST` | IP VM dengan port 8443, misalnya `10.0.0.5:8443` |
+| `LLM_HTTP_PORT` | Biarkan `80`. Bila port 80 sudah dipakai aplikasi lain, isi port kosong lain, misalnya `8080`. Port ini hanya untuk redirect ke HTTPS. |
 | `VPN_CIDR` | Rentang IP VPN dari B1. |
 | `TLS_CERT_DIR` | Biarkan `/etc/llm-gateway/certs`. Selama memakai IP folder ini kosong, tetapi harus ada (B4). |
 
@@ -302,6 +304,7 @@ Hasil yang diharapkan:
 
 Kalau gagal:
 
+- `make up` gagal dengan `failed to bind port 0.0.0.0:80/tcp ... address already in use`: port 80 dipakai aplikasi lain. Tambahkan `LLM_HTTP_PORT=8080` (atau port kosong lain) ke `deploy/env/vm.env`, lalu jalankan `make up ENV=vm` lagi. Bila pesannya menyebut port 443 atau 8443, port itu tidak bisa dipindah: hentikan aplikasi yang memakainya (lihat perintah `ss` di B1).
 - `curl: (60)` atau `certificate` error: file CA belum dipakai atau salah. Jalankan ulang `make vm-ca ENV=vm` dan salin lagi.
 - `Connection refused` atau timeout: port 443/8443 belum dibuka di firewall VM, atau laptop belum terhubung VPN.
 
