@@ -26,7 +26,7 @@ Ada dua profil, dipilih dengan `ENV`:
 | Upstream | `mock-upstream` (selalu menjawab `mock-ok`) | OpenAI asli |
 | Env file | `deploy/env/local.env` (dibuat `make init-local`) | `deploy/env/vm.env` (diisi dari secret manager) |
 | Entitlements | `entitlements/local.yaml` | `entitlements/pilot.yaml` |
-| Alamat | `https://llm.pilot.test:8443`, hanya dari `127.0.0.1` | `https://llm.perusahaan.internal` (port 443), atau `https://<ip>` selama belum ada domain; dengan `VM_TLS=off`, `http://` di port `LLM_HTTP_PORT` |
+| Alamat | `https://llm.pilot.test:8443`, hanya dari `127.0.0.1` | `https://llm.perusahaan.internal` (port 443, atau `LLM_HTTPS_PORT`), atau `https://<ip>` selama belum ada domain; dengan `VM_TLS=off`, `http://` di port `LLM_HTTP_PORT` |
 | TLS | CA internal Caddy | `VM_TLS=company`: sertifikat perusahaan di `TLS_CERT_DIR`; `VM_TLS=internal`: CA internal Caddy (`make vm-ca ENV=vm`); `VM_TLS=off`: tanpa TLS, key lewat jaringan tanpa enkripsi |
 | Host admin | terbuka dari localhost | hanya dari `VPN_CIDR`, selain itu 403; lewat IP di port 8443 |
 
@@ -171,7 +171,7 @@ Urutan lengkapnya ada di `docs/pilot-checklist.md` bagian 2–5. Hal yang perlu 
 - **Secret:** semua nilai di `deploy/env/vm.env.example`, diambil dari secret manager. `OPENAI_API_KEY` sebaiknya milik OpenAI Project khusus gateway, supaya usage di dashboard OpenAI bisa dicocokkan untuk T11.
 - **Sertifikat:** `fullchain.pem` dan `privkey.pem` untuk kedua host, ditaruh di direktori `TLS_CERT_DIR`. Bila CA-nya internal, taruh juga CA-nya di `deploy/certs/` dan set `GATEWAY_CA_BUNDLE`. Selama belum ada domain, pakai `VM_TLS=internal` dan akses lewat IP (`docs/setup-admin.md` Bagian B). Tanpa sertifikat sama sekali, `VM_TLS=off` menjalankan HTTP polos; isi juga `GATEWAY_URL` (lihat `deploy/env/vm.env.example`).
 - **DNS:** `LLM_HOST` dan `LLM_ADMIN_HOST` mengarah ke IP VM dari jaringan pengguna. Container `tools` tidak butuh DNS ini karena memakai alias jaringan Docker. Lewat IP tidak butuh DNS.
-- **Jaringan:** port 443 terbuka ke VM (plus 8443 untuk host admin lewat IP), `VPN_CIDR` berisi rentang VPN yang benar, dan VM bisa keluar ke `api.openai.com`. Port 80 hanya untuk redirect ke HTTPS; bila sudah dipakai aplikasi lain di VM, pindahkan dengan `LLM_HTTP_PORT` di `vm.env`. Dengan `VM_TLS=off`, port `LLM_HTTP_PORT` itulah yang dipakai pengguna dan harus terbuka; 443 tetap harus kosong di VM.
+- **Jaringan:** port 443 terbuka ke VM (plus 8443 untuk host admin lewat IP), `VPN_CIDR` berisi rentang VPN yang benar, dan VM bisa keluar ke `api.openai.com`. Port 80 hanya untuk redirect ke HTTPS. Bila port 80 atau 443 sudah dipakai aplikasi lain di VM, pindahkan dengan `LLM_HTTP_PORT` atau `LLM_HTTPS_PORT` di `vm.env`; alamat HTTPS pengguna lalu memuat port itu. Dengan `VM_TLS=off`, port `LLM_HTTP_PORT` itulah yang dipakai pengguna dan harus terbuka; port HTTPS tidak dipakai, tetapi tetap dipesan Docker sehingga harus kosong di VM. Port 8443 tidak bisa dipindah.
 - **Operator:** `git config user.email` di VM terisi, atau tambahkan `OPERATOR=...` ke `make apply` dan `make ctl`.
 - **Budget uji:** key smoke dibatasi $2 per 30 hari (`entitlements/pilot.yaml`). Naikkan lewat file entitlements bila sesi manual T06/T07 butuh lebih.
 
@@ -191,7 +191,7 @@ Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 | Gejala | Penyebab dan solusi |
 | --- | --- |
 | `make up` gagal dengan pesan `... belum diisi` | Variabel di env file kosong. Lokal: jalankan `make init-local`. VM: lengkapi `deploy/env/vm.env`. |
-| `make up ENV=vm` gagal dengan `bind: address already in use` | Port host dipakai aplikasi lain; cek dengan `sudo ss -ltnp 'sport = :80'` (ganti port sesuai pesan). Port 80: isi `LLM_HTTP_PORT` di `vm.env` dengan port kosong, misalnya `8080`, lalu `make up ENV=vm` lagi. Port 443 dan 8443 tidak bisa dipindah: hentikan aplikasi yang memakainya. |
+| `make up ENV=vm` gagal dengan `bind: address already in use` | Port host dipakai aplikasi lain; cek dengan `sudo ss -ltnp 'sport = :80'` (ganti port sesuai pesan). Port 80: isi `LLM_HTTP_PORT` di `vm.env` dengan port kosong, misalnya `8080`. Port 443: isi `LLM_HTTPS_PORT`, misalnya `9443`, juga untuk `VM_TLS=off`. Lalu `make up ENV=vm` lagi. Port 8443 tidak bisa dipindah: hentikan aplikasi yang memakainya. |
 | `make up` timeout menunggu healthy | Lihat `make logs ARGS='--tail 200 litellm-a'`. Penyebab umum: `DATABASE_URL` tidak cocok dengan `POSTGRES_PASSWORD`, atau image belum selesai ditarik. |
 | `gatewayctl` exit 3 | LiteLLM belum siap. Tunggu `make ps` menunjukkan healthy, lalu ulangi. |
 | `GATEWAYCTL_OPERATOR wajib diisi` | `git config user.email` kosong; tambahkan `OPERATOR=nama@perusahaan.com`. |
