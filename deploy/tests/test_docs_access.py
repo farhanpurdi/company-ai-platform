@@ -14,6 +14,10 @@ STALE = [
 # Path -> text that must appear.
 DOCS = {
     "docs/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1"],
+    "docs/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans"],
+    "docs/pilot-checklist.md": ["LITELLM_PORT", "http://<ip-vm>:<LITELLM_PORT>/v1"],
+    "docs/onboarding.md": ["http://10.0.0.5:4000/v1"],
+    "docs/opencode.example.json": ['"baseURL": "http://<ip-vm>:4000/v1"'],
 }
 
 
@@ -27,3 +31,9 @@ def test_no_stale_instructions(path):
 def test_required_facts(path):
     text = (REPO / path).read_text(encoding="utf-8")
     assert [s for s in DOCS[path] if s not in text] == []
+
+
+def test_opencode_template_is_valid_json():
+    import json
+    doc = json.loads((REPO / "docs" / "opencode.example.json").read_text(encoding="utf-8"))
+    assert doc["provider"]["company"]["options"]["baseURL"] == "http://<ip-vm>:4000/v1"
