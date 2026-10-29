@@ -48,10 +48,13 @@ def chat(
     tools: list | None = None,
     tool_choice: str | dict | None = None,
     prompt: str = "ping",
+    max_tokens: int | None = None,
 ) -> httpx.Response:
     body: dict = {"model": model, "messages": [{"role": "user", "content": prompt}]}
     if stream:
         body["stream"] = True
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
     if tools is not None:
         body["tools"] = tools
     if tool_choice is not None:

@@ -129,6 +129,10 @@ Tambahan terhadap `config.yaml` di panduan bagian 5.2:
 - **Retry dan fallback:** `num_retries: 2` dengan backoff, `fallbacks: [{"company-reasoning": ["company-coding"]}]`, `request_timeout: 600`.
 - **Privasi log:** `turn_off_message_logging: true`, prompt tidak disimpan di spend log, `LITELLM_LOG=INFO`, `json_logs: true`.
 - **Redis:** `redis_host`, `redis_port`, `redis_password` (bukan `redis_url`).
+- **Budget fail-closed:** `general_settings.fail_closed_budget_enforcement: true` (keputusan pemilik repo 2026-10-30).
+  - Sebelum memanggil upstream, LiteLLM memesan taksiran biaya terburuk setiap request: input ditambah `max_tokens`, atau 16384 token output bila `max_tokens` kosong. Request yang taksirannya tidak muat di sisa budget ditolak.
+  - Tanpa flag ini, request di dekat batas tetap diloloskan dengan reservasi yang dipangkas, dan T03 mengukur overshoot 30%.
+  - Konsekuensinya, sisa budget yang lebih kecil dari taksiran satu request tidak bisa dipakai. Tanpa `max_tokens`, taksiran itu sekitar $0.25 untuk Terra dan $0.49 untuk Sol.
 
 ## 6. `gatewayctl`
 
