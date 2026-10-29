@@ -965,15 +965,15 @@ return await agent(
 
 ### Memulai run (satu-satunya langkah manusia)
 
-Mulai sesi Claude Code baru di root repo, di branch `feat/remove-caddy`, dengan mode auto. Sesi baru diperlukan agar hook dari Task 0 dan 0b terbaca. Lalu:
+Mulai sesi Claude Code baru di root repo, di branch `feat/remove-caddy`, dalam mode auto, lalu kirim:
 
 ```
-/goal Keluaran terakhir .claude/hooks/remove-caddy-success.sh yang dijalankan di sesi ini, langsung atau oleh workflow remove-caddy, adalah baris "SUKSES remove-caddy <sha>" dengan exit=0, dan git log --oneline main..HEAD yang ditampilkan sesudahnya berisi commit Task 0 sampai Task 6. Tidak ada git push. Bila sebuah task gagal review tiga kali, atau GAGAL yang sama muncul tiga kali berturut-turut, berhenti dan laporkan penyebabnya. Atau berhenti setelah 40 giliran.
+/goal execute docs/superpowers/plans/2026-10-29-remove-caddy-goal.md
 ```
 
-Lalu kirim: `touch var/remove-caddy.goal, lalu jalankan workflow remove-caddy`.
+File itu berisi kriteria selesai, kondisi berhenti, prasyarat, langkah, aturan, dan format laporan akhir.
 
 - **Gerbang deterministik (Stop hook Task 0b)** menjalankan semua pemeriksaan sendiri, dan menahan sesi sampai lulus.
 - **`/goal`** menjaga sesi tetap bekerja lintas giliran, dan menilai dari keluaran yang tampil di percakapan.
-- **Push dan PR** tetap di luar keadaan sukses, karena CLAUDE.md mewajibkan izin pemilik repo. Hook `guard-bash.sh` meminta konfirmasi bila ada `git push`.
-- **Setelah selesai:** hapus `var/remove-caddy.goal`, supaya gerbang tidak aktif lagi di sesi berikutnya.
+- **Push dan PR** tetap di luar keadaan sukses, karena CLAUDE.md mewajibkan izin pemilik repo.
+- **Penanda gerbang** `var/remove-caddy.goal` dipasang dan dicabut sendiri oleh runbook.
