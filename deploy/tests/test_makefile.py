@@ -6,6 +6,7 @@ an unsilenced recipe would make `KEY=$(make ctl ARGS='key issue ...')` capture
 the docker compose command line as well as the key.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -70,14 +71,20 @@ def test_audit_git_sha_marks_uncommitted_file():
     assert "git status --porcelain" in text and "-dirty" in text, line
 
 
-def test_vm_ca_copies_caddy_root_for_vm_only():
-    # VM_TLS=internal: the tools container and tester laptops trust Caddy's root CA.
-    recipe = _recipe("vm-ca")
-    assert recipe[0] == '@[ "$(ENV)" = vm ] || { echo "vm-ca hanya untuk ENV=vm" >&2; exit 1; }'
-    joined = " ".join(recipe)
-    assert "/data/caddy/pki/authorities/local/root.crt > $(VM_CA).tmp" in joined
-    assert "mv $(VM_CA).tmp $(VM_CA)" in joined
-    assert "VM_CA := var/caddy-vm-root.crt" in MAKEFILE.read_text(encoding="utf-8")
+def test_caddy_ca_targets_are_gone():
+    text = MAKEFILE.read_text(encoding="utf-8")
+    assert not re.search(r"^(local|vm)-ca:", text, re.M)
+    assert "caddy" not in text.lower()
+
+
+def test_test_and_smoke_need_no_ca():
+    assert _prerequisites("test") == ["unit"]
+    assert _prerequisites("smoke") == []
+
+
+def test_up_removes_orphaned_caddy():
+    # A stack started before this change still has a caddy container holding host ports.
+    assert "--remove-orphans" in " ".join(_recipe("up"))
 
 
 def test_tools_runs_as_host_user():

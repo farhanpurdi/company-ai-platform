@@ -21,7 +21,7 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl local-ca vm-ca test smoke hooks
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks
 
 # Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
 hooks:
@@ -40,8 +40,9 @@ unit: tools-build
 init-local:
 	sh scripts/init-local.sh
 
+# --remove-orphans: drops containers of services no longer in the compose files (the old reverse proxy).
 up:
-	$(COMPOSE) up -d --build --wait --wait-timeout 300
+	$(COMPOSE) up -d --build --wait --wait-timeout 300 --remove-orphans
 
 # Keeps volumes: keys, teams and spend live in them.
 down:
@@ -73,28 +74,9 @@ apply:
 ctl:
 	@$(CTL) $(ARGS)
 
-# Local profile: Caddy's internal CA sits in a root-only volume the tools
-# container (host user) cannot read; the certificate is public, so copy it out.
-LOCAL_CA := var/caddy-local-root.crt
-local-ca:
-ifeq ($(ENV),local)
-	@mkdir -p var
-	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(LOCAL_CA).tmp
-	@mv $(LOCAL_CA).tmp $(LOCAL_CA)
-endif
-
-# VM with VM_TLS=internal (access by IP): Caddy's root certificate for the tools
-# container (GATEWAY_CA_BUNDLE in vm.env) and for tester laptops. Also public.
-VM_CA := var/caddy-vm-root.crt
-vm-ca:
-	@[ "$(ENV)" = vm ] || { echo "vm-ca hanya untuk ENV=vm" >&2; exit 1; }
-	@mkdir -p var
-	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(VM_CA).tmp
-	@mv $(VM_CA).tmp $(VM_CA)
-
 # Unit, then integration and acceptance against the local stack (make up),
 # then the T10 log scan on the host.
-test: unit local-ca
+test: unit
 	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider tests/integration tests/acceptance -v
 	scripts/t10-scan-logs.sh $(ENV)
 
@@ -102,5 +84,5 @@ test: unit local-ca
 # ARGS='key issue ...'`, read from the environment: `SMOKE_KEY="$$SMOKE_KEY" make
 # smoke ENV=vm`. Never pass it as a make argument: argv is visible in `ps`.
 # Intended for ENV=vm (real OpenAI).
-smoke: local-ca
+smoke:
 	$(COMPOSE) run --rm -T -e SMOKE_KEY tools pytest -p no:cacheprovider tests/smoke -v
