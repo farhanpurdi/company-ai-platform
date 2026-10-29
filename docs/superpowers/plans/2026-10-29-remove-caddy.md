@@ -857,7 +857,7 @@ git commit -m "docs: operator, checklist and onboarding without Caddy or TLS"
 
 - [ ] **Step 1: Jalankan gerbang sukses**
 
-Run: `.claude/hooks/remove-caddy-success.sh --now; echo "exit=$?"`
+Run: `.claude/hooks/remove-caddy-success.sh --now; echo "exit=$?"`. Pemeriksaan ini bisa lebih dari 10 menit, jadi jalankan di latar belakang (opsi `run_in_background` pada tool Bash), tunggu sampai selesai, lalu baca `var/remove-caddy-success/result`.
 Expected: `SUKSES remove-caddy <sha>` dan `exit=0`. Keluaran ini juga menjadi bukti bagi `/goal`. Angka T03, T05, dan T10 untuk PR diambil dari `var/remove-caddy-success/make-test.log`, dan hasil smoke VM dari `vm-smoke.log`.
 
 - [ ] **Step 2: Minta izin push, lalu buat PR**
@@ -905,30 +905,62 @@ File: `~/.claude/workflows/remove-caddy.js`. Ini workflow pribadi, tidak di-comm
 ```js
 export const meta = {
   name: 'remove-caddy',
-  description: 'Execute docs/superpowers/plans/2026-10-29-remove-caddy.md tasks 1-7 (no push)',
-  phases: [{ title: 'Implement' }, { title: 'Review' }, { title: 'Verify' }],
+  description: 'Execute docs/superpowers/plans/2026-10-29-remove-caddy.md Tasks 1-7 Step 1 on feat/remove-caddy (no push)',
+  whenToUse: 'Only in company-ai-platform on branch feat/remove-caddy, after plan Task 0 and 0b are done.',
+  phases: [
+    { title: 'Implement', detail: 'one fresh agent per task, plan steps in order' },
+    { title: 'Review', detail: 'independent reviewer per task; up to 3 rounds' },
+    { title: 'Verify', detail: 'success gate .claude/hooks/remove-caddy-success.sh --now' },
+  ],
 }
+
 const PLAN = 'docs/superpowers/plans/2026-10-29-remove-caddy.md'
-const VERDICT = { type: 'object', required: ['approved', 'issues'], properties: {
-  approved: { type: 'boolean' }, issues: { type: 'array', items: { type: 'string' } } } }
+const GATE = '.claude/hooks/remove-caddy-success.sh'
+const RULES =
+  `Work in the current checkout on branch feat/remove-caddy. Read the plan's Global Constraints first. ` +
+  `Never push, never open a PR, never amend or rebase. Never edit ${GATE}, .claude/settings.local.json or the ` +
+  `spec. Commands that can run longer than 10 minutes (make test, the success gate) go through the Bash tool's ` +
+  `run_in_background option; wait for them to finish. No other make test may run at the same time.`
+const VERDICT = {
+  type: 'object',
+  required: ['approved', 'issues'],
+  properties: {
+    approved: { type: 'boolean' },
+    issues: { type: 'array', items: { type: 'string' } },
+  },
+}
+
 for (const n of [1, 2, 3, 4, 5, 6]) {
   let feedback = ''
   for (let round = 0; round < 3; round++) {
-    await agent(`Implement Task ${n} of ${PLAN} exactly, step by step, on branch feat/remove-caddy. ` +
-      `Read the plan's Global Constraints first. Commit as the task's last step says. Never push. ${feedback}`,
-      { label: `task-${n}${round ? `-fix${round}` : ''}`, phase: 'Implement' })
-    const v = await agent(`Review Task ${n} of ${PLAN} as committed on feat/remove-caddy (git log main..HEAD) against the task and the spec ` +
-      `(commit 4abb0e0). Check every step's expected result yourself (run make unit). Approve only if all hold.`,
-      { label: `review-${n}`, phase: 'Review', schema: VERDICT })
+    await agent(
+      `Implement Task ${n} of ${PLAN} exactly, step by step, including its failing-test step and its commit. ` +
+        `${RULES} ${feedback}`,
+      { label: round ? `task-${n}-fix${round}` : `task-${n}`, phase: 'Implement' },
+    )
+    const v = await agent(
+      `Review Task ${n} of ${PLAN} as committed on feat/remove-caddy (git log --oneline main..HEAD, git show). ` +
+        `Check it against the task's steps, the plan's Global Constraints and the spec (commit 4abb0e0). ` +
+        `Run every verification the task names yourself (at least make unit). Approve only if every expected ` +
+        `result holds and nothing outside the task's Files changed. List concrete issues otherwise. ${RULES}`,
+      { label: `review-${n}`, phase: 'Review', schema: VERDICT },
+    )
     if (v && v.approved) break
-    if (round === 2) throw new Error(`Task ${n} not approved: ${v ? v.issues.join('; ') : 'reviewer died'}`)
-    feedback = `A reviewer rejected the previous attempt. Fix these in a new commit (do not amend): ${v ? v.issues.join('; ') : ''}`
+    const issues = v ? v.issues.join('; ') : 'reviewer returned nothing'
+    if (round === 2) throw new Error(`Task ${n} not approved after 3 rounds: ${issues}`)
+    feedback = `A reviewer rejected the previous attempt. Fix these in a new commit: ${issues}`
   }
+  log(`Task ${n} approved`)
 }
+
 phase('Verify')
-return await agent(`Run Task 7 Step 1 of ${PLAN}: .claude/hooks/remove-caddy-success.sh --now. If it prints GAGAL, ` +
-  `fix the cause in a new commit (follow the plan and Global Constraints) and run it again, up to 3 times. ` +
-  `Return its final output verbatim. Do not push and do not open a PR.`, { label: 'verify', phase: 'Verify' })
+return await agent(
+  `Run Task 7 Step 1 of ${PLAN}: ${GATE} --now, in the background, then read var/remove-caddy-success/result. ` +
+    `If it starts with GAGAL, read the named log, fix the cause in a new commit that follows the plan, and run ` +
+    `the gate again, at most 3 times. If the gate itself looks wrong, stop and say why instead of working ` +
+    `around it. Return the final result line verbatim, then git log --oneline main..HEAD. ${RULES}`,
+  { label: 'verify', phase: 'Verify' },
+)
 ```
 
 ### Memulai run (satu-satunya langkah manusia)
