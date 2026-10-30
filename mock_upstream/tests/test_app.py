@@ -39,6 +39,15 @@ def test_ok_nonstream_usage_and_model(client):
     assert [m["id"] for m in models] == [TERRA, SOL]
 
 
+def test_usage_itemizes_cached_prompt_tokens_like_openai(client):
+    assert "prompt_tokens_details" not in client.post("/v1/chat/completions", json=BODY).json()["usage"]
+    client.post("/_mock/usage", json={"prompt_tokens": 1000, "completion_tokens": 500, "cached_tokens": 800})
+    usage = client.post("/v1/chat/completions", json=BODY).json()["usage"]
+    # OpenAI counts cached tokens inside prompt_tokens.
+    assert usage["prompt_tokens"] == 1000
+    assert usage["prompt_tokens_details"] == {"cached_tokens": 800}
+
+
 def test_stream_yields_5_chunks_then_usage_then_done(client):
     with client.stream("POST", "/v1/chat/completions", json={**BODY, "stream": True}) as r:
         assert r.status_code == 200
