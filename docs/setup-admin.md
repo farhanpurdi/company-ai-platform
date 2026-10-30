@@ -230,6 +230,8 @@ cd company-ai-platform
 git config user.email "nama-admin@perusahaan.com"
 ```
 
+`make apply` dan `make ctl` mencatat email ini sebagai operator di `var/audit.log`, dan menolak berjalan bila email kosong. Perintah di atas hanya berlaku untuk repo ini. Bila beberapa admin login dengan akun Linux yang sama, tambahkan `OPERATOR=email-sendiri` ke setiap `make apply` dan `make ctl` agar audit log mencatat orang yang benar.
+
 ### B3. Isi file rahasia VM
 
 ```sh
@@ -258,9 +260,10 @@ Lewati langkah ini untuk VM baru.
 Versi lama memakai container Caddy di depan gateway, dengan beberapa variabel tambahan untuk TLS dan alamat. Sekarang `deploy/env/vm.env` cukup berisi rahasia (`LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_API_BASE`) dan `LITELLM_PORT`.
 
 1. Ambil kode terbaru dengan `git pull`. File `deploy/env/vm.env` yang sudah ada tetap dipakai; jangan menimpanya dengan `vm.env.example`, dan jangan mengganti `LITELLM_SALT_KEY`.
-2. Tambahkan baris `LITELLM_PORT=4000` di `deploy/env/vm.env`, atau port lain hasil cek di B1.
-3. Baris lain di luar daftar di atas tidak dipakai lagi. Baris itu boleh dihapus, dan tidak mengganggu bila tertinggal.
-4. Lanjut ke B5. `make up ENV=vm` membuang container Caddy lama secara otomatis, sehingga port lamanya dilepas.
+2. Cek email operator dengan `git config user.email`. Bila kosong, isi seperti di B2: `git config user.email "nama-admin@perusahaan.com"`.
+3. Tambahkan baris `LITELLM_PORT=4000` di `deploy/env/vm.env`, atau port lain hasil cek di B1.
+4. Baris lain di luar daftar di atas tidak dipakai lagi. Baris itu boleh dihapus, dan tidak mengganggu bila tertinggal.
+5. Lanjut ke B5. `make up ENV=vm` membuang container Caddy lama secara otomatis, sehingga port lamanya dilepas.
 
 Volume Docker lama dibiarkan apa adanya. Jangan menghapus volume apa pun: volume `pgdata` berisi key, team, dan spend. Folder sertifikat lama di VM juga tidak dipakai lagi.
 
@@ -302,6 +305,13 @@ make apply ENV=vm
 make plan ENV=vm   # harus: Ringkasan: 0 aksi, tanpa Error 2
 ```
 
+Hasil yang diharapkan sama dengan A5. Plan pertama berakhir dengan `make: *** ... Error 2`, dan itu normal: artinya ada perubahan yang belum diterapkan. `make apply` menampilkan daftar yang sama lalu `Selesai: N aksi diterapkan.`
+
+Kalau gagal:
+
+- `GATEWAYCTL_OPERATOR wajib diisi`: email git di repo ini kosong, dan belum ada yang diterapkan. Isi seperti di B2, lalu ulangi `make apply ENV=vm`.
+- `Ada aksi destruktif; tidak ada yang dijalankan. Ulangi dengan --confirm.`: belum ada yang berubah. Baca baris bertanda `[destructive]` di atasnya. Di VM baru seharusnya tidak ada aksi destruktif. Pakai `make apply ENV=vm ARGS=--confirm` hanya bila setiap aksi itu memang diinginkan.
+
 Commit perubahan file entitlements agar ada jejak siapa yang mengubah apa.
 
 ### B7. Siapkan laptop penguji
@@ -309,7 +319,14 @@ Commit perubahan file entitlements agar ada jejak siapa yang mengubah apa.
 Lakukan di setiap laptop yang akan memakai OpenCode ke gateway. Tidak ada file sertifikat yang perlu dipasang.
 
 1. Salin `docs/opencode.example.json` seperti di `docs/onboarding.md`, lalu ganti `baseURL` menjadi `http://10.0.0.5:4000/v1` (dengan port `LITELLM_PORT` bila bukan 4000).
-2. Simpan key pengguna sebagai `COMPANY_LLM_KEY` (lihat `docs/onboarding.md`).
+2. Di VM, terbitkan key untuk penguji. Untuk uji T06 dan T07, pakai akun `smoke@perusahaan.com` (budget $2):
+
+   ```sh
+   make -s ctl ENV=vm ARGS='key issue --user smoke@perusahaan.com --label opencode'
+   ```
+
+   Key `sk-...` tampil sekali. Kirim lewat kanal aman, lalu jalankan `clear` di VM. Label harus berbeda untuk email yang sama, jadi laptop penguji kedua memakai label lain, misalnya `opencode-2`. Anggota pilot memakai email sendiri, yang harus sudah terdaftar di B6 (lihat Bagian C, "Memberi key ke pengguna").
+3. Di laptop, simpan key itu sebagai `COMPANY_LLM_KEY` (lihat `docs/onboarding.md` bagian 1).
 
 Pakai gateway hanya saat laptop terhubung ke jaringan kantor, karena key terkirim tanpa enkripsi.
 
