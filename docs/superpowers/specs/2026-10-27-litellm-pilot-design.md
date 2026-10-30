@@ -125,14 +125,18 @@ Inference dan admin memakai satu alamat, yaitu `litellm-a`: `http://<host>:<LITE
 Tambahan terhadap `config.yaml` di panduan bagian 5.2:
 
 - **`api_base: os.environ/OPENAI_API_BASE`** pada setiap deployment. Lokal mengarah ke `http://mock-upstream:8080/v1`, VM ke `https://api.openai.com/v1`.
-- **Harga dipin di `model_info`** (`input_cost_per_token`, `output_cost_per_token`): Terra $2.50/$15 dan Sol $5/$30 per 1M token. Perhitungan spend tidak bergantung pada cost map bawaan, dan langkah reload cost map dihapus dari checklist. Harga diverifikasi ke halaman harga OpenAI sebelum Gate 2.
+- **Harga dipin di `model_info`** (`input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`). Keputusan pemilik repo 2026-10-30 menggantikan harga awal Terra $2.50/$15 dan Sol $5/$30, yang tidak lagi sesuai dengan tagihan OpenAI:
+  - Per 1M token, tier Standard, input / input cache / output: Terra $2 / $0.20 / $12 dan Sol $4 / $0.40 / $20, sesuai halaman harga OpenAI pada 2026-10-30. Harga Sol adalah promo sampai setidaknya 2026-11-21 dan dicek ulang pada tanggal itu.
+  - `LITELLM_LOCAL_MODEL_COST_MAP=True`: LiteLLM tidak mengunduh cost map dari GitHub saat start, sehingga langkah reload cost map tidak ada di checklist. Nilai yang tidak dipin, yaitu tarif konteks di atas 272K token dan `max_output_tokens`, berasal dari cost map di image yang dipin digest dan hanya berubah saat image di-upgrade.
+  - Uji acceptance memastikan spend satu request dengan input cache, baik JSON maupun stream, sama dengan harga di `config.yaml`. Uji T02 dan T03 membaca harga dari file yang sama.
+  - Prosedur perubahan harga ada di `docs/operator-guide.md`, "Mengubah harga model".
 - **Retry dan fallback:** `num_retries: 2` dengan backoff, `fallbacks: [{"company-reasoning": ["company-coding"]}]`, `request_timeout: 600`.
 - **Privasi log:** `turn_off_message_logging: true`, prompt tidak disimpan di spend log, `LITELLM_LOG=INFO`, `json_logs: true`.
 - **Redis:** `redis_host`, `redis_port`, `redis_password` (bukan `redis_url`).
 - **Budget fail-closed:** `general_settings.fail_closed_budget_enforcement: true` (keputusan pemilik repo 2026-10-30).
   - Sebelum memanggil upstream, LiteLLM memesan taksiran biaya terburuk setiap request: input ditambah `max_tokens`, atau 16384 token output bila `max_tokens` kosong. Request yang taksirannya tidak muat di sisa budget ditolak.
   - Tanpa flag ini, request di dekat batas tetap diloloskan dengan reservasi yang dipangkas, dan T03 mengukur overshoot 30%.
-  - Konsekuensinya, sisa budget yang lebih kecil dari taksiran satu request tidak bisa dipakai. Tanpa `max_tokens`, taksiran itu sekitar $0.25 untuk Terra dan $0.49 untuk Sol.
+  - Konsekuensinya, sisa budget yang lebih kecil dari taksiran satu request tidak bisa dipakai. Tanpa `max_tokens`, taksiran itu kurang lebih biaya 16384 token output: sekitar $0.20 untuk Terra dan $0.33 untuk Sol dengan harga 2026-10-30.
 
 ## 6. `gatewayctl`
 

@@ -13,7 +13,7 @@ Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan da
 | Target waktu pencabutan key (T05) | 5 menit | |
 | Akses jaringan dan TLS | HTTP langsung ke `litellm-a` di `LITELLM_PORT`; TLS dan proxy oleh DevOps (spec bagian 10) | |
 | Versi LiteLLM | `v1.106.4` dipin digest (tidak ada tag `-stable` berversi) | |
-| Harga Terra/Sol (`model_info`) | Terra $2.50/$15, Sol $5/$30 per 1M token | Diverifikasi ke halaman harga OpenAI: |
+| Harga Terra/Sol (`model_info`) | Per 1M token, tier Standard, input / input cache / output: Terra $2 / $0.20 / $12, Sol $4 / $0.40 / $20. Harga Sol promo sampai setidaknya 2026-11-21; cek ulang pada tanggal itu (`docs/operator-guide.md`, "Mengubah harga model") | Diverifikasi ke halaman harga OpenAI: |
 
 ## 2. Deploy VM
 
@@ -44,9 +44,11 @@ Dengan `docs/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budge
 
 ## 5. Rekonsiliasi spend (T11)
 
+Harga di `deploy/litellm/config.yaml` harus sudah sama dengan halaman harga OpenAI (bagian 1). Spend yang tercatat sebelum harga diubah memakai harga lama, jadi ambil snapshot `spend-before.json` setelah perubahan harga di-deploy.
+
 1. Setelah smoke dan sesi manual selesai, tunggu beberapa menit agar spend tertulis.
 2. Selisih spend: `$SPEND --compare /repo/var/spend-before.json 2>/dev/null`. Keluaran berisi selisih per team dan `total` dalam USD.
-3. Bandingkan `total` dengan dashboard usage OpenAI Project untuk jendela waktu yang sama (pakai OpenAI Project khusus gateway agar tidak tercampur).
+3. Bandingkan `total` dengan biaya OpenAI Project di dashboard (pakai OpenAI Project khusus gateway agar tidak tercampur). Dashboard menampilkan biaya per hari dan tidak bisa memisahkan jendela beberapa menit, jadi lakukan uji pada hari yang tidak punya pemakaian gateway lain, atau tambahkan spend gateway di luar jendela uji pada hari itu.
 4. Lulus bila selisih < 5%. Catat angkanya di bagian 6.
 
 ## 6. Catatan hasil Gate 2

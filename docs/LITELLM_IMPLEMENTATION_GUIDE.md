@@ -77,11 +77,11 @@ Prinsip yang wajib dijaga:
 
 | Alias | Model OpenAI | Kegunaan | Harga input / output per 1M token* | Saat gagal |
 | --- | --- | --- | --- | --- |
-| `company-fast` | `gpt-5.6-terra` | Chat harian, ringkasan, tanya-jawab | $2.50 / $15 | Retry terbatas |
-| `company-coding` | `gpt-5.6-terra` | Coding harian, agent di OpenCode | $2.50 / $15 | Retry terbatas |
-| `company-reasoning` | `gpt-5.6-sol` | Coding sulit, analisis kompleks, agent panjang | $5 / $30 | Retry, lalu fallback ke `company-coding` sebelum output terkirim |
+| `company-fast` | `gpt-5.6-terra` | Chat harian, ringkasan, tanya-jawab | $2 / $12 | Retry terbatas |
+| `company-coding` | `gpt-5.6-terra` | Coding harian, agent di OpenCode | $2 / $12 | Retry terbatas |
+| `company-reasoning` | `gpt-5.6-sol` | Coding sulit, analisis kompleks, agent panjang | $4 / $20 | Retry, lalu fallback ke `company-coding` sebelum output terkirim |
 
-\*Harga untuk konteks hingga 272K token; konteks lebih panjang lebih mahal. Verifikasi di halaman harga OpenAI sebelum menetapkan budget.
+\*Tier Standard per 2026-10-30, untuk konteks hingga 272K token; konteks lebih panjang lebih mahal. Input yang dilayani dari cache prompt: $0.20 (Terra) dan $0.40 (Sol). Harga Sol adalah promo sampai setidaknya 2026-11-21. Harga yang dipakai gateway adalah yang dipin di `deploy/litellm/config.yaml`; verifikasi di halaman harga OpenAI sebelum menetapkan budget.
 
 Aturan katalog:
 
