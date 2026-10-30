@@ -95,6 +95,12 @@ Aturan katalog:
 - Setiap perubahan mapping (misalnya pindah ke Sol generasi baru) wajib lolos uji T06, T07, dan T09 di staging sebelum produksi, dan dicatat di audit administrasi.
 - Simpan metadata per alias: owner, model aktual, kelas data yang diizinkan, versi mapping, tanggal berlaku.
 
+### 3.1 Tata kelola harga
+
+- **Harga dipin.** Harga per token setiap deployment (input, input cache, output) dipin di `deploy/litellm/config.yaml` dan hanya berubah lewat PR. Harga di config tidak boleh di bawah harga provider. Untuk harga promo, tanggal berakhirnya dicatat.
+- **Prioritas mengikuti arah perubahan.** Harga naik wajib diterapkan sebelum tanggal berlaku; bila terlambat, budget bocor sebesar selisihnya. Harga turun tidak mendesak, karena gateway hanya menghitung lebih mahal dari tagihan.
+- **Gateway satu-satunya batas per team.** Batas belanja di provider berfungsi sebagai sekring: kira-kira jumlah budget bulanan semua team yang memakai provider itu, ditambah 10–20%. Bila provider hanya mengirim alert tanpa memblokir, catat hal itu.
+
 ---
 
 ## 4. Team, entitlement, dan policy
@@ -442,7 +448,7 @@ Jika gate gagal, fase diperpanjang, bukan dilewati.
 - [ ] Inventaris user, team, dan alias yang dibutuhkan tiap team
 - [ ] Buat OpenAI Project khusus gateway atas nama perusahaan
 - [ ] Cek usage tier dan rate limit organisasi OpenAI untuk Terra dan Sol
-- [ ] Pasang budget dan alert di level OpenAI Project sebagai pengaman kedua
+- [ ] Pasang batas belanja dan alert di level OpenAI Project sebagai sekring: jumlah budget bulanan semua team + 10–20%; catat bila hanya alert (§3.1)
 - [x] Konfirmasi ID model persis (`gpt-5.6-terra`, `gpt-5.6-sol`) atau generasi yang lebih baru (T06 dan T07 lulus terhadap OpenAI asli, `docs/pilot-checklist.md` bagian 6)
 - [ ] Tetapkan kebijakan data: kelas data apa yang boleh dikirim ke OpenAI
 - [ ] Tetapkan toleransi overshoot budget dan target waktu pencabutan key (mis. maks. 5 menit; sementara 10% dan 5 menit)
@@ -462,7 +468,8 @@ Setup:
 - [x] Buat team pilot: IT/Developer + 1 team non-teknis (`entitlements/pilot.yaml`: `it-developer`, `finance`)
 - [ ] Provision 5–10 pengguna pilot (bagian 5.4; baru akun smoke)
 - [x] Logging metadata aktif, tanpa prompt/output dan key mentah (T10 lulus)
-- [ ] Reload model cost map
+- [x] Harga dipin di `config.yaml` beserta harga cache; cost map dari image (PR #10)
+- [ ] Verifikasi harga dicatat di kolom Gate 1 `docs/pilot-checklist.md`
 - [x] Siapkan template OpenCode dan panduan onboarding singkat (`docs/opencode.example.json`, `docs/onboarding.md`)
 
 Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualitas Terra vs Sol, kemudahan setup).
@@ -493,6 +500,10 @@ Observability dan audit:
 - [ ] Alert: error rate > 5%, lonjakan latency, lonjakan 429 dari OpenAI, Postgres/Redis down, spend team mendekati batas, kegagalan provisioning/offboarding
 - [ ] Audit administrasi: siapa membuat/mencabut key, mengubah budget, atau mengganti mapping alias, dengan nilai sebelum/sesudah
 
+Harga:
+
+- [ ] Cek ulang harga Sol pada 21 November 2026 (akhir promo); ubah lewat runbook 8.7 bila berubah
+
 Uji: jalankan T12–T16 (bagian 7).
 
 ### Fase 3 — Rollout dan governance (minggu 6–7)
@@ -511,7 +522,9 @@ Governance:
 - [ ] Offboarding terintegrasi dengan alur HR/IdP (lihat runbook 8.2)
 - [ ] Rekonsiliasi mingguan: key milik user nonaktif atau team yang salah dibersihkan
 - [ ] Laporan spend bulanan per team untuk chargeback
-- [ ] Jadwal: rotasi master key dan API key OpenAI tiap 90 hari, review mapping alias tiap bulan, upgrade LiteLLM lewat staging
+- [ ] Rekonsiliasi bulanan manual: spend gateway dibandingkan tagihan provider; selisih > 5% berarti harga ditinjau; hasilnya dicatat
+- [ ] Cek perubahan harga otomatis: job terjadwal tanpa secret (misalnya GitHub Actions) membandingkan harga di config dengan cost map LiteLLM terbaru dan membuat issue pengingat bila berbeda; job tidak mengubah config
+- [ ] Jadwal: rotasi master key dan API key OpenAI tiap 90 hari, review mapping alias tiap bulan, review harga bersama rekonsiliasi bulanan, upgrade LiteLLM lewat staging
 - [ ] Evaluasi kebutuhan SSO/SCIM/audit log bawaan dan lisensi Enterprise
 
 ---
@@ -587,6 +600,16 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 2. Jalankan T06, T07, T09 dan bandingkan biaya per tugas.
 3. Deploy produksi, umumkan perubahan, catat versi mapping di audit.
 
+### 8.7 Perubahan harga
+
+1. Tentukan urgensi: harga naik diterapkan sebelum tanggal berlaku, harga turun tidak mendesak (§3.1).
+2. Ubah ketiga harga setiap alias di `deploy/litellm/config.yaml` lewat PR, beserta salinannya di bagian 5.2. Jalankan `make unit` dan `make test`.
+3. Setelah merge, di VM: `git pull`, lalu buat ulang kedua replika dengan `--force-recreate`; `make up` saja tidak cukup.
+4. Verifikasi harga yang berlaku di container.
+5. Catat tanggal berlaku dan sumber harga.
+
+Perintah lengkap ada di `docs/operator-guide.md`, "Mengubah harga model".
+
 ---
 
 ## 9. Risiko dan mitigasi
@@ -596,7 +619,8 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 | Satu provider (OpenAI) | Gangguan OpenAI menghentikan layanan | Diterima untuk rilis awal; alert dan runbook 8.3; Azure OpenAI sebagai deployment kedua di fase berikutnya |
 | Rate limit organisasi OpenAI dipakai bersama | Satu agent berat memicu 429 untuk semua | Limit per key dan team di bawah limit organisasi; naikkan usage tier bila perlu |
 | Biaya Sol tinggi pada agent panjang | Budget team cepat habis | Terra sebagai default; Sol lewat entitlement; budget harian per user |
-| Budget overshoot pada request paralel | Biaya melewati batas | Toleransi tertulis, uji T03, `max_parallel_requests` per key bila perlu, budget di OpenAI Project |
+| Harga provider berubah atau promo berakhir | Spend tidak cocok dengan tagihan; bila harga naik, budget bocor sebesar selisihnya | Harga dipin dan direview (§3.1, runbook 8.7), rekonsiliasi bulanan, cek perubahan harga otomatis, sekring di provider |
+| Budget overshoot pada request paralel | Biaya melewati batas | Toleransi tertulis, `fail_closed_budget_enforcement`, uji T03 (terukur -4%), `max_parallel_requests` per key bila perlu, budget di OpenAI Project |
 | Fallback melanggar entitlement | User mendapat model yang tidak diizinkan | Fallback hanya ke alias yang juga diizinkan untuk key tersebut |
 | Redis atau Postgres down | Limit tidak konsisten atau request lolos tanpa pemeriksaan | Fail-closed; Redis wajib sebelum replika kedua; managed HA; uji T12–T15 |
 | Koneksi DB habis saat autoscale | Error massal | Batasi `maxReplicas`, PgBouncer, pantau koneksi |
