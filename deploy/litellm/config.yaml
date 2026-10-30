@@ -1,5 +1,7 @@
 # LiteLLM proxy config shared by every profile (local and VM).
-# Prices are pinned per token so spend does not depend on the built-in cost map.
+# Prices are pinned per token, cached input included, so spend does not depend on
+# LiteLLM's cost map. OpenAI Standard tier, checked 2026-10-30; the Sol price is a
+# promotion until at least 2026-11-21, recheck then (operator guide).
 model_list:
   - model_name: company-fast
     litellm_params:
@@ -7,24 +9,27 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
       api_base: os.environ/OPENAI_API_BASE
     model_info:
-      input_cost_per_token: 2.5e-6
-      output_cost_per_token: 1.5e-5
+      input_cost_per_token: 2.0e-6
+      output_cost_per_token: 1.2e-5
+      cache_read_input_token_cost: 2.0e-7
   - model_name: company-coding
     litellm_params:
       model: openai/gpt-5.6-terra
       api_key: os.environ/OPENAI_API_KEY
       api_base: os.environ/OPENAI_API_BASE
     model_info:
-      input_cost_per_token: 2.5e-6
-      output_cost_per_token: 1.5e-5
+      input_cost_per_token: 2.0e-6
+      output_cost_per_token: 1.2e-5
+      cache_read_input_token_cost: 2.0e-7
   - model_name: company-reasoning
     litellm_params:
       model: openai/gpt-5.6-sol
       api_key: os.environ/OPENAI_API_KEY
       api_base: os.environ/OPENAI_API_BASE
     model_info:
-      input_cost_per_token: 5.0e-6
-      output_cost_per_token: 3.0e-5
+      input_cost_per_token: 4.0e-6
+      output_cost_per_token: 2.0e-5
+      cache_read_input_token_cost: 4.0e-7
 
 router_settings:
   routing_strategy: simple-shuffle
