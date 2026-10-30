@@ -1,8 +1,10 @@
 # Acuan Pengerjaan LiteLLM Gateway — Rilis Awal
 
 Tanggal: 27 Oktober 2026
+Diperbarui: 31 Oktober 2026 (spec `docs/superpowers/specs/2026-10-31-implementation-guide-sync-design.md`)
 Status: Acuan kerja rilis awal
 Acuan desain: `LLM_GATEWAY_ARCHITECTURE.md`
+Keputusan pilot: `docs/superpowers/specs/2026-10-27-litellm-pilot-design.md`
 Lingkup rilis awal: satu provider (OpenAI API), dua model (GPT-5.6 Terra dan GPT-5.6 Sol)
 
 > Dokumen ini adalah turunan eksekusi dari dokumen arsitektur. Jika ada konflik, prinsip di dokumen arsitektur yang berlaku, lalu dokumen ini diperbarui. Semua contoh konfigurasi perlu diverifikasi terhadap versi LiteLLM dan OpenCode yang dipin.
@@ -33,14 +35,16 @@ Target: LiteLLM proxy dipakai seluruh tim dalam **±7 minggu**, melalui 4 fase d
 | --- | --- |
 | Provider | **OpenAI API** (billing platform). Bukan langganan ChatGPT Plus/Pro/Team. |
 | Model | `gpt-5.6-terra` (default harian), `gpt-5.6-sol` (tugas berat). ID lengkap dipin, bukan alias `gpt-5.6`. |
+| Harga | Dipin per token di `deploy/litellm/config.yaml` (input, input cache, output); cost map tidak diunduh. Lihat §3.1 |
 | Client utama | OpenCode, lalu IDE/CLI lain, Open WebUI, dan aplikasi internal |
-| Deploy | Pilot: Docker Compose di 1 VM. Produksi: Kubernetes + Helm, minimal 2 replika |
+| Deploy | Pilot: Docker Compose di 1 VM, dua replika (`litellm-a`, `litellm-b`), HTTP langsung ke `litellm-a`; TLS dan proxy oleh DevOps sebelum dipakai luas. Produksi: Kubernetes + Helm, minimal 2 replika |
 | State | Managed PostgreSQL + managed Redis 7.0+ |
 | Autentikasi | Virtual key individual per user; service account key per aplikasi |
 | Administrasi | Admin UI bawaan + skrip provisioning. Portal custom hanya bila alur perusahaan menuntut |
 | Caching | Response caching **mati** |
 | Logging | Metadata saja. Prompt/output dan key mentah tidak disimpan |
 | Kegagalan dependency | **Fail-closed**: jika key/budget tidak bisa diperiksa, request ditolak |
+| Budget | Fail-closed juga untuk budget (`fail_closed_budget_enforcement: true`): request yang taksiran biaya terburuknya tidak muat di sisa budget ditolak |
 | Lisensi | Open source. Evaluasi Enterprise bila butuh SSO/SCIM/audit log bawaan |
 
 Di luar lingkup rilis awal: provider lain (Azure OpenAI, Gemini, DeepSeek, GLM), GPT-5.6 Luna, model lokal, portal custom, guardrail/PII masking otomatis, SCIM.
@@ -62,6 +66,8 @@ flowchart TD
     A["Admin via VPN"] --> UI["Admin UI / management API"]
     UI --> L
 ```
+
+> **Kondisi pilot** (spec pilot §10): pengguna terhubung langsung ke `litellm-a` lewat HTTP di port `LITELLM_PORT`, tanpa ingress TLS, allowlist path, dan pembatasan admin ke VPN. Management API dan Admin UI hanya dilindungi master key. Kontrol itu kembali saat proxy DevOps dipasang (§5.3).
 
 Prinsip yang wajib dijaga:
 
@@ -350,62 +356,37 @@ Selama pilot, pengguna terhubung langsung ke `litellm-a` lewat HTTP. Sebelum gat
 
 ### 5.4 Provisioning team, member, dan key
 
-Buat team:
+Team, member, budget, dan izin alias dideklarasikan di `entitlements/<profil>.yaml` dan diterapkan dengan `gatewayctl` lewat `make`. Jangan memakai `curl` manual ke management API untuk perubahan itu. `gatewayctl` memanggil endpoint yang sama dan mencatat audit di `var/audit.log`, dengan operator dari `git config user.email` atau `OPERATOR=`.
 
-```bash
-curl -X POST https://llm.perusahaan.internal/team/new \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "team_id": "it-developer",
-    "team_alias": "IT / Developer",
-    "models": ["company-fast", "company-coding", "company-reasoning"],
-    "max_budget": 500,
-    "budget_duration": "30d",
-    "rpm_limit": 600
-  }'
+Contoh (isi terkini di `entitlements/pilot.yaml`):
+
+```yaml
+version: 1
+teams:
+  it-developer:
+    alias: "IT / Developer"
+    models: [company-fast, company-coding, company-reasoning]
+    budget: { max_usd: 500, duration: 30d }
+    rpm_limit: 600
+    member_defaults:
+      max_budget_in_team: 100
+      key:
+        rpm_limit: 60
+        budgets: [{ duration: 24h, max_usd: 10 }, { duration: 30d, max_usd: 100 }]
+    members:
+      - nama.depan@perusahaan.com
 ```
 
-Tambahkan anggota dengan budget individu di dalam team:
+Menerapkan perubahan, menerbitkan key, dan memblokir key di VM:
 
-```bash
-curl -X POST https://llm.perusahaan.internal/team/member_add \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "team_id": "it-developer",
-    "member": {"role": "user", "user_id": "budi@perusahaan.com"},
-    "max_budget_in_team": 100
-  }'
+```sh
+make plan ENV=vm      # exit 2 = ada perubahan; tinjau dulu
+make apply ENV=vm     # ARGS=--confirm bila plan menandai aksi destruktif
+make -s ctl ENV=vm ARGS='key issue --user nama.depan@perusahaan.com --label opencode'
+make ctl ENV=vm ARGS='key block --user nama.depan@perusahaan.com'   # atau --alias <user>-<label>
 ```
 
-Buat virtual key individual:
-
-```bash
-curl -X POST https://llm.perusahaan.internal/key/generate \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "budi@perusahaan.com",
-    "team_id": "it-developer",
-    "key_alias": "budi-opencode",
-    "models": ["company-fast", "company-coding", "company-reasoning"],
-    "rpm_limit": 60,
-    "budget_limits": [
-      {"budget_duration": "24h", "max_budget": 10},
-      {"budget_duration": "30d", "max_budget": 100}
-    ]
-  }'
-```
-
-Blokir key (offboarding atau kebocoran):
-
-```bash
-curl -X POST https://llm.perusahaan.internal/key/block \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "sk-..."}'
-```
+Detail ada di `docs/operator-guide.md` bagian 4 dan `docs/setup-admin.md` Bagian C.
 
 ### 5.5 Contoh konfigurasi OpenCode
 
@@ -457,34 +438,36 @@ Jika gate gagal, fase diperpanjang, bukan dilewati.
 
 ### Fase 0 — Persiapan (minggu 1)
 
-- [ ] Kunci keputusan di bagian 1 dan dokumentasikan alasannya
+- [ ] Kunci keputusan di bagian 1 dan dokumentasikan alasannya (nilai sementara: spec pilot §10; konfirmasi di `docs/pilot-checklist.md` bagian 1)
 - [ ] Inventaris user, team, dan alias yang dibutuhkan tiap team
 - [ ] Buat OpenAI Project khusus gateway atas nama perusahaan
 - [ ] Cek usage tier dan rate limit organisasi OpenAI untuk Terra dan Sol
 - [ ] Pasang budget dan alert di level OpenAI Project sebagai pengaman kedua
-- [ ] Konfirmasi ID model persis (`gpt-5.6-terra`, `gpt-5.6-sol`) atau generasi yang lebih baru
+- [x] Konfirmasi ID model persis (`gpt-5.6-terra`, `gpt-5.6-sol`) atau generasi yang lebih baru (T06 dan T07 lulus terhadap OpenAI asli, `docs/pilot-checklist.md` bagian 6)
 - [ ] Tetapkan kebijakan data: kelas data apa yang boleh dikirim ke OpenAI
-- [ ] Tetapkan toleransi overshoot budget dan target waktu pencabutan key (mis. maks. 5 menit)
+- [ ] Tetapkan toleransi overshoot budget dan target waktu pencabutan key (mis. maks. 5 menit; sementara 10% dan 5 menit)
 - [ ] Generate `LITELLM_MASTER_KEY` dan `LITELLM_SALT_KEY`, simpan di secret manager
-- [ ] Siapkan domain internal (mis. `llm.perusahaan.internal`) dan sertifikat TLS
-- [ ] Pilih versi LiteLLM (min. v1.93.0-stable) dan pin ke image digest
+- [ ] TLS dan domain disediakan proxy DevOps sebelum gateway dipakai luas (keputusan 2026-10-29, spec pilot §10)
+- [x] Pilih versi LiteLLM (min. v1.93.0-stable) dan pin ke image digest (`v1.106.4@sha256:c169fb3a…`, `deploy/compose.yaml`)
 
 ### Fase 1 — Pilot (minggu 2–3)
 
 Setup:
 
-- [ ] Deploy Docker Compose (bagian 5.3) di belakang reverse proxy HTTPS
-- [ ] Terapkan `config.yaml` (bagian 5.2) dengan 3 alias
-- [ ] Response caching mati; Redis hanya untuk counter dan rate limit
-- [ ] `LITELLM_MODE=PRODUCTION` sejak awal
-- [ ] Admin UI hanya dari VPN
-- [ ] Buat team pilot: IT/Developer + 1 team non-teknis
-- [ ] Provision 5–10 pengguna pilot (bagian 5.4)
-- [ ] Logging metadata aktif, tanpa prompt/output dan key mentah
+- [x] Deploy Docker Compose (bagian 5.3) di VM: dua replika, HTTP langsung ke `litellm-a`; proxy DevOps menyusul
+- [x] Terapkan `config.yaml` (bagian 5.2) dengan 3 alias
+- [x] Response caching mati; Redis hanya untuk counter dan rate limit
+- [x] `LITELLM_MODE=PRODUCTION` sejak awal
+- [ ] Admin UI dan management API hanya dari jaringan tepercaya; ditunda ke proxy DevOps, selama pilot hanya dilindungi master key (spec pilot §10)
+- [x] Buat team pilot: IT/Developer + 1 team non-teknis (`entitlements/pilot.yaml`: `it-developer`, `finance`)
+- [ ] Provision 5–10 pengguna pilot (bagian 5.4; baru akun smoke)
+- [x] Logging metadata aktif, tanpa prompt/output dan key mentah (T10 lulus)
 - [ ] Reload model cost map
-- [ ] Siapkan template OpenCode dan panduan onboarding singkat
+- [x] Siapkan template OpenCode dan panduan onboarding singkat (`docs/opencode.example.json`, `docs/onboarding.md`)
 
 Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualitas Terra vs Sol, kemudahan setup).
+
+Status Gate 2 per 31 Oktober 2026: T01–T10 lulus, T11 menunggu diulang setelah harga diperbarui (`docs/pilot-checklist.md` bagian 6).
 
 ### Fase 2 — Produksi HA (minggu 4–5)
 
@@ -547,7 +530,7 @@ Governance:
 | T08 | Retry | Simulasikan 429/5xx dari OpenAI | Maks. 2 retry dengan backoff; tidak berlapis dengan retry client | G2 |
 | T09 | Fallback | Gagalkan Sol sebelum output pertama | Request pindah ke Terra, tercatat di log; tidak pernah pindah di tengah stream | G2 |
 | T10 | Kebersihan log | Periksa log setelah uji | Tidak ada key mentah, API key OpenAI, header authorization, atau prompt | G2 |
-| T11 | Rekonsiliasi spend | Bandingkan `/team/info` dengan usage OpenAI Project | Selisih < 5% | G2 |
+| T11 | Rekonsiliasi spend | Snapshot spend gateway (`tests/smoke/spend_report.py`) sebelum dan sesudah uji, pada hari UTC tanpa pemakaian dengan harga lama; bandingkan dengan biaya harian OpenAI Project (`docs/pilot-checklist.md` bagian 5) | Selisih < 5% | G2 |
 | T12 | Redis down | Matikan Redis sementara | Limit/budget tidak diam-diam terlewati; perilaku terdokumentasi | G3 |
 | T13 | Postgres down | Matikan Postgres sementara | Request baru ditolak (fail-closed) | G3 |
 | T14 | Replika mati | Matikan 1 pod | Trafik tetap jalan | G3 |
@@ -561,20 +544,20 @@ Governance:
 ### 8.1 Onboarding user
 
 1. Pastikan user ada di grup IdP yang benar.
-2. Tambahkan ke team (`/team/member_add`) dengan budget individu.
-3. Generate virtual key (`/key/generate`) dengan alias sesuai entitlement.
-4. Kirim key lewat kanal aman; user memasangnya sebagai environment variable dan memakai template OpenCode.
-5. Catat di audit administrasi.
+2. Tambahkan email user di `members` team yang tepat di `entitlements/<profil>.yaml`, jalankan `make plan` lalu `make apply`, dan commit perubahan file.
+3. Terbitkan key: `make -s ctl ARGS='key issue --user nama.depan@perusahaan.com --label opencode'` (tambahkan `ENV=vm` di VM).
+4. Kirim key lewat kanal aman beserta `docs/onboarding.md`; user memasangnya sebagai environment variable dan memakai template OpenCode.
+5. Audit tercatat otomatis di `var/audit.log`.
 
 ### 8.2 Offboarding user
 
 Menonaktifkan akun SSO **tidak** mencabut virtual key.
 
-1. Cari semua key milik user (filter `user_id`).
-2. Blokir atau hapus setiap key.
-3. Hapus keanggotaan team dan entitlement.
-4. Verifikasi: request dengan key lama ditolak di semua replika.
-5. Catat hasil di audit; kegagalan memicu alert.
+1. Hapus user dari `members` di file entitlements.
+2. `make plan` menandai aksi destruktif; `make apply ARGS=--confirm` memblokir semua key yang diterbitkan `gatewayctl` untuk user itu.
+3. Key yang dibuat di luar `gatewayctl` hanya ditandai di `plan`; blokir dengan `make ctl ARGS='key block --alias <alias>'`.
+4. Verifikasi: request dengan key lama ditolak di kedua replika (seperti T05).
+5. Audit tercatat di `var/audit.log`; commit perubahan file. Kegagalan memicu alert.
 
 ### 8.3 OpenAI tidak tersedia atau 429 massal
 
@@ -630,10 +613,10 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 
 - [ ] Jumlah pengguna dan team, serta berapa yang butuh akses Sol?
 - [ ] Infra produksi: Kubernetes yang sudah ada, VM, atau cloud tertentu?
-- [ ] Generasi model: GPT-5.6 Terra/Sol, atau Sol generasi lebih baru yang sudah dirilis OpenAI?
+- [x] Generasi model: GPT-5.6 Terra/Sol, atau Sol generasi lebih baru yang sudah dirilis OpenAI? Rilis awal memakai `gpt-5.6-terra` dan `gpt-5.6-sol` (T06, T07 lulus terhadap OpenAI asli).
 - [ ] Usage tier organisasi OpenAI saat ini dan apakah rate limit-nya cukup?
 - [ ] Identity Provider yang dipakai untuk SSO dan offboarding?
-- [ ] Toleransi overshoot budget dan target waktu pencabutan key?
+- [ ] Toleransi overshoot budget dan target waktu pencabutan key? Nilai sementara: 10% dari limit dan 5 menit (spec pilot §10); menunggu konfirmasi Gate 1.
 - [ ] Data apa yang tidak boleh dikirim ke OpenAI?
 - [ ] Siapa pemilik gateway dan admin per team?
 
