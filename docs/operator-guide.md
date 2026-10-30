@@ -154,7 +154,7 @@ Kapan harga perlu diubah:
 Langkahnya:
 
 1. Buka halaman harga provider (OpenAI: tier Standard) dan catat harga input, input cache, dan output per 1M token. Bagi dengan 1.000.000 untuk harga per token. Tulis dengan titik desimal, misalnya `2.0e-7`, karena `2e-7` terbaca sebagai teks dan ditolak `make unit`.
-2. Di branch baru, ubah ketiga harga setiap alias beserta tanggal dan sumber di komentar atas `config.yaml`. Jalankan `make unit` dan `make test`, lalu buat PR. Tes membaca harga dari `config.yaml`, jadi tidak perlu ikut diubah.
+2. Di branch baru, ubah ketiga harga setiap alias beserta tanggal dan sumber di komentar atas `config.yaml`. Jalankan `make unit` dan `make test`, lalu buat PR. Tes membaca harga dari `config.yaml`, jadi tidak perlu ikut diubah. `make unit` juga gagal sampai salinan `config.yaml` di `docs/LITELLM_IMPLEMENTATION_GUIDE.md` bagian 5.2 ikut diperbarui.
 3. Setelah PR di-merge, jalankan di VM:
 
    ```sh

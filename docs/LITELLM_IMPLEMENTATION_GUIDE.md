@@ -128,23 +128,50 @@ Angka berikut ilustrasi; sesuaikan setelah 2 minggu pemakaian.
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Shared state | Jangan pakai `redis_url` |
 | `LITELLM_MODE` | `PRODUCTION` | Menonaktifkan auto-load `.env` |
 | `DISABLE_SCHEMA_UPDATE` | `true` di pod produksi | Migrasi lewat Job terpisah |
+| `LITELLM_LOCAL_MODEL_COST_MAP` | `True` | Harga dan batas output dari config dan image yang dipin; cost map tidak diunduh dari GitHub |
+| `OPENAI_API_BASE` | Endpoint OpenAI | VM `https://api.openai.com/v1`; lokal mock `http://mock-upstream:8080/v1` |
+| `LITELLM_PORT` | Port `litellm-a` di host | Default 4000 |
+| `LITELLM_LOG` | `INFO` | Jangan `DEBUG`: body request tercetak di log |
+| `JSON_LOGS` | `True` | Log terstruktur |
 
 ### 5.2 `config.yaml`
 
+Salinan persis `deploy/litellm/config.yaml`; `make unit` gagal bila berbeda.
+
+<!-- salinan: deploy/litellm/config.yaml -->
 ```yaml
+# LiteLLM proxy config shared by every profile (local and VM).
+# Prices are pinned per token, cached input included, so spend does not depend on
+# LiteLLM's cost map. OpenAI Standard tier, checked 2026-10-30; the Sol price is a
+# promotion until at least 2026-11-21, recheck then (operator guide).
 model_list:
   - model_name: company-fast
     litellm_params:
       model: openai/gpt-5.6-terra
       api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE
+    model_info:
+      input_cost_per_token: 2.0e-6
+      output_cost_per_token: 1.2e-5
+      cache_read_input_token_cost: 2.0e-7
   - model_name: company-coding
     litellm_params:
       model: openai/gpt-5.6-terra
       api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE
+    model_info:
+      input_cost_per_token: 2.0e-6
+      output_cost_per_token: 1.2e-5
+      cache_read_input_token_cost: 2.0e-7
   - model_name: company-reasoning
     litellm_params:
       model: openai/gpt-5.6-sol
       api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE
+    model_info:
+      input_cost_per_token: 4.0e-6
+      output_cost_per_token: 2.0e-5
+      cache_read_input_token_cost: 4.0e-7
 
 router_settings:
   routing_strategy: simple-shuffle
@@ -153,50 +180,173 @@ router_settings:
   redis_port: os.environ/REDIS_PORT
   redis_password: os.environ/REDIS_PASSWORD
   fallbacks: [{"company-reasoning": ["company-coding"]}]
+  # One deployment per alias: a cooldown would take the whole alias down.
+  disable_cooldowns: true
+
+litellm_settings:
+  # Per attempt (spec 5). A hung non-streaming call plus retries can outlast
+  # the DevOps proxy's read timeout (at least 600s, spec 10); open item for
+  # Gate 2, not changed here.
+  request_timeout: 600
+  turn_off_message_logging: true
+  json_logs: true
+  cache: false
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
-  # Jangan aktifkan allow_requests_on_db_unavailable: gateway harus fail-closed.
+  store_prompts_in_spend_logs: false
+  # Explicit cross-replica Redis for spend counters and rate limits; fails loudly
+  # instead of silently falling back to per-replica memory.
+  coordination_redis:
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+    password: os.environ/REDIS_PASSWORD
+  # Reject a request whose worst-case cost (max_tokens, else 16384 output tokens)
+  # does not fit the remaining budget; otherwise parallel requests overshoot (spec 5).
+  fail_closed_budget_enforcement: true
+  # Never enable allow_requests_on_db_unavailable: the gateway must fail closed.
 ```
 
-Setelah deploy, reload model cost map dari Admin UI agar harga Terra dan Sol tercatat benar.
+Harga per token dipin di config ini (§3.1). Gateway tidak memakai cost map yang diunduh (`LITELLM_LOCAL_MODEL_COST_MAP=True`), jadi tidak ada langkah memuat ulang harga dari Admin UI. Perubahan harga mengikuti `docs/operator-guide.md`, "Mengubah harga model".
 
-### 5.3 `docker-compose.yml` untuk pilot
+### 5.3 Compose untuk pilot
 
+`make up ENV=vm` menjalankan `docker compose` dengan `deploy/compose.yaml`, overlay `deploy/compose.vm.yaml`, dan `deploy/env/vm.env`. Berikut salinan persis kedua file compose; `make unit` gagal bila berbeda.
+
+<!-- salinan: deploy/compose.yaml -->
 ```yaml
+# Core services shared by every profile. Run through the Makefile, which adds
+# the profile overlay (compose.local.yaml or compose.vm.yaml) and its env file.
+
+x-litellm-env: &litellm-env
+  LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY belum diisi}
+  LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY belum diisi}
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL belum diisi}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY belum diisi}
+  OPENAI_API_BASE: ${OPENAI_API_BASE:?OPENAI_API_BASE belum diisi}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD belum diisi}
+  LITELLM_MODE: PRODUCTION
+  # Never DEBUG: it logs request bodies.
+  LITELLM_LOG: INFO
+  JSON_LOGS: "True"
+  # Prices and output limits come from config.yaml and the pinned image, never from
+  # the cost map LiteLLM would otherwise download from GitHub at startup.
+  LITELLM_LOCAL_MODEL_COST_MAP: "True"
+
+x-litellm: &litellm
+  # Newest stable release >= v1.93.0 at implementation time, pinned by index digest.
+  image: ghcr.io/berriai/litellm:v1.106.4@sha256:c169fb3adc514fcf210377c203f3de406d54f10bfdacf13948a4a839db9af7de
+  command: ["--config", "/app/config.yaml", "--port", "4000"]
+  volumes:
+    - ./litellm/config.yaml:/app/config.yaml:ro
+  environment: *litellm-env
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+    interval: 10s
+    timeout: 5s
+    retries: 6
+    start_period: 120s
+  restart: unless-stopped
+
 services:
-  litellm:
-    image: ghcr.io/berriai/litellm:<versi-stable>@sha256:<digest>  # min. v1.93.0-stable
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
-    ports:
-      - "127.0.0.1:4000:4000"   # hanya diakses lewat reverse proxy HTTPS
-    volumes:
-      - ./config.yaml:/app/config.yaml:ro
-    env_file: .env.litellm      # pilot saja; produksi memakai secret manager
-    depends_on: [postgres, redis]
-    restart: unless-stopped
+  litellm-a:
+    <<: *litellm
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  litellm-b:
+    <<: *litellm
+    environment:
+      <<: *litellm-env
+      # Migrations run once, on litellm-a.
+      DISABLE_SCHEMA_UPDATE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      litellm-a:
+        condition: service_healthy
 
   postgres:
     image: postgres:16
     environment:
       POSTGRES_DB: litellm
       POSTGRES_USER: litellm
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD belum diisi}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "litellm", "-d", "litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   redis:
     image: redis:7
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD belum diisi}
+    # Password comes from the container env so it stays out of the command line.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
+
+  tools:
+    profiles: ["tools"]
+    image: llm-gateway-tools
+    build:
+      context: ..
+      dockerfile: tools/Dockerfile
+    # Host user (exported by the Makefile) so files written to the checkout stay
+    # host-owned; 0 when compose is run by hand.
+    user: "${HOST_UID:-0}:${HOST_GID:-0}"
+    working_dir: /repo
+    volumes:
+      - ..:/repo
+    environment:
+      LITELLM_BASE_URL: http://litellm-a:4000
+      # Users reach litellm-a directly (spec 4.2); tests take the same path.
+      GATEWAY_URL: http://litellm-a:4000
 
 volumes:
   pgdata:
 ```
 
-Reverse proxy di depan LiteLLM wajib mendukung streaming: matikan response buffering (misalnya `proxy_buffering off` di Nginx) dan set read timeout panjang (mis. 600 detik) untuk agent yang berjalan lama.
+<!-- salinan: deploy/compose.vm.yaml -->
+```yaml
+# VM profile: real OpenAI upstream. Users reach litellm-a directly over HTTP;
+# TLS and the network edge belong to DevOps (spec section 10).
+
+services:
+  litellm-a:
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+
+  tools:
+    env_file:
+      - path: env/vm.env
+        required: false
+```
+
+Selama pilot, pengguna terhubung langsung ke `litellm-a` lewat HTTP. Sebelum gateway dipakai lebih luas, proxy DevOps di depan VM wajib menyediakan (spec pilot §10):
+
+- TLS.
+- Allowlist path inference: `/v1/chat/completions`, `/v1/models`, dan `/health/liveliness`; path lain ditolak.
+- Management API dan Admin UI hanya dari jaringan tepercaya.
+- Load balancing ke kedua replika, `litellm-a` dan `litellm-b`.
+- Timeout baca minimal 600 detik tanpa buffering, agar jawaban streaming yang panjang tidak terputus.
+- Header yang membawa key tidak dicatat di access log proxy.
 
 ### 5.4 Provisioning team, member, dan key
 
@@ -259,8 +409,9 @@ curl -X POST https://llm.perusahaan.internal/key/block \
 
 ### 5.5 Contoh konfigurasi OpenCode
 
-Simpan virtual key di environment variable user, jangan di file yang di-commit.
+Simpan virtual key di environment variable user, jangan di file yang di-commit. Salinan persis `docs/opencode.example.json`; `make unit` gagal bila berbeda.
 
+<!-- salinan: docs/opencode.example.json -->
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
@@ -269,8 +420,10 @@ Simpan virtual key di environment variable user, jangan di file yang di-commit.
       "npm": "@ai-sdk/openai-compatible",
       "name": "Company LLM Gateway",
       "options": {
-        "baseURL": "https://llm.perusahaan.internal/v1",
-        "apiKey": "{env:COMPANY_LLM_KEY}"
+        "baseURL": "http://<ip-vm>:4000/v1",
+        "apiKey": "{env:COMPANY_LLM_KEY}",
+        "timeout": 600000,
+        "headerTimeout": 600000
       },
       "models": {
         "company-coding": { "name": "Company Coding (Terra)" },
@@ -281,7 +434,7 @@ Simpan virtual key di environment variable user, jangan di file yang di-commit.
 }
 ```
 
-Verifikasi format ini terhadap versi OpenCode yang dipakai tim, lalu jadikan template resmi di panduan onboarding.
+Template ini dipakai `docs/onboarding.md`; ganti `<ip-vm>` dengan alamat gateway.
 
 ---
 
