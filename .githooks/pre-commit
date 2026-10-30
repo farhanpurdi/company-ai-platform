@@ -43,7 +43,7 @@ for script in $(printf '%s\n' "$staged" | grep -E '\.sh$|^\.githooks/' || true);
 	sh -n "$script" || fail "$script tidak lolos sh -n"
 done
 
-if [ "${SKIP_UNIT:-0}" != "1" ] && printf '%s\n' "$staged" | grep -qE '^(gatewayctl|mock_upstream|deploy|tools)/|^Makefile$'; then
+if [ "${SKIP_UNIT:-0}" != "1" ] && printf '%s\n' "$staged" | grep -qE '^(gatewayctl|mock_upstream|deploy|tools|docs)/|^Makefile$'; then
 	make -s unit >"$work/unit.log" 2>&1 || {
 		tail -n 20 "$work/unit.log" >&2
 		fail "make unit gagal"
