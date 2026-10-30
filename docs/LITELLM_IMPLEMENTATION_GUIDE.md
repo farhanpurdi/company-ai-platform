@@ -473,6 +473,7 @@ Setup:
 - [x] Logging metadata aktif, tanpa prompt/output dan key mentah (T10 lulus)
 - [x] Harga dipin di `config.yaml` beserta harga cache; cost map dari image (PR #10)
 - [ ] Verifikasi harga dicatat di kolom Gate 1 `docs/pilot-checklist.md`
+- [ ] Deploy harga PR #10 ke VM (runbook 8.7) sebelum T11 diulang
 - [x] Siapkan template OpenCode dan panduan onboarding singkat (`docs/opencode.example.json`, `docs/onboarding.md`)
 
 Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualitas Terra vs Sol, kemudahan setup).

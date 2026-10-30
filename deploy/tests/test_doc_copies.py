@@ -21,6 +21,13 @@ def test_guide_carries_every_copy():
     assert {path for path, _ in _copies(GUIDE)} == GUIDE_COPIES
 
 
+def test_pre_commit_runs_unit_for_docs_only_commits():
+    # Otherwise a docs-only commit can leave a copy stale until someone touches deploy/.
+    hook = (REPO / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+    trigger = re.search(r"grep -qE '([^']+)'; then\n\tmake -s unit", hook)[1]
+    assert [p for p in (GUIDE, "docs/opencode.example.json") if not re.search(trigger, p)] == []
+
+
 @pytest.mark.parametrize("doc", DOCS)
 def test_copies_match_their_files(doc):
     stale = [path for path, body in _copies(doc) if body != (REPO / path).read_text(encoding="utf-8")]
