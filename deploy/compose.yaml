@@ -14,6 +14,9 @@ x-litellm-env: &litellm-env
   # Never DEBUG: it logs request bodies.
   LITELLM_LOG: INFO
   JSON_LOGS: "True"
+  # Prices and output limits come from config.yaml and the pinned image, never from
+  # the cost map LiteLLM would otherwise download from GitHub at startup.
+  LITELLM_LOCAL_MODEL_COST_MAP: "True"
 
 x-litellm: &litellm
   # Newest stable release >= v1.93.0 at implementation time, pinned by index digest.

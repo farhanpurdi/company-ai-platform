@@ -136,9 +136,42 @@ Jangan memanggil management API secara manual. Alurnya selalu:
 
 Budget ditegakkan secara fail-closed (`fail_closed_budget_enforcement`, spec bagian 5). Sebelum meneruskan request, LiteLLM memesan taksiran biaya terburuknya: input ditambah `max_tokens`, atau 16384 token output bila klien tidak mengisi `max_tokens`. Request yang taksirannya tidak muat di sisa budget ditolak dengan `budget_exceeded`.
 
-Akibatnya, pengguna bisa ditolak sebelum budget benar-benar habis. Tanpa `max_tokens`, sisa budget di bawah sekitar $0.25 (`company-fast`, `company-coding`) atau $0.49 (`company-reasoning`) tidak terpakai. Budget key di bawah angka itu menolak semua request tanpa `max_tokens`.
+Akibatnya, pengguna bisa ditolak sebelum budget benar-benar habis. Tanpa `max_tokens`, sisa budget di bawah biaya 16384 token output tidak terpakai, yaitu `output_cost_per_token` alias itu di `deploy/litellm/config.yaml` dikali 16384. Dengan harga per 2026-10-30, angkanya sekitar $0.20 untuk `company-fast` dan `company-coding`, dan $0.33 untuk `company-reasoning`. Budget key di bawah angka itu menolak semua request tanpa `max_tokens`.
 
 Menghapus member dari file berarti offboarding: semua key yang diterbitkan `gatewayctl` untuk user itu diblokir. Key yang dibuat di luar `gatewayctl` hanya ditandai di `plan` dan perlu diblokir manual (lihat keputusan Gate 2 di deskripsi PR).
+
+### Mengubah harga model
+
+Spend dan budget dihitung dari harga per token yang dipin di `deploy/litellm/config.yaml`: `input_cost_per_token`, `output_cost_per_token`, dan `cache_read_input_token_cost` (input yang dilayani dari cache prompt provider). LiteLLM tidak mengunduh harga dari internet (`LITELLM_LOCAL_MODEL_COST_MAP=True`). Tarif untuk konteks di atas 272K token dan batas output model berasal dari tabel di image LiteLLM yang dipin, sehingga hanya berubah saat image di-upgrade.
+
+Kapan harga perlu diubah:
+
+- **Harga provider naik:** ubah sebelum tanggal berlakunya. Selama harga di config lebih murah dari tagihan, budget bocor sebesar selisihnya.
+- **Harga provider turun:** tidak mendesak. Harga di config yang lebih mahal hanya membuat pengguna kena batas lebih cepat.
+- **Harga promo:** catat tanggal berakhirnya dan cek ulang pada tanggal itu. Harga Sol per 2026-10-30 adalah promo sampai setidaknya 21 November 2026.
+- **Rekonsiliasi spend dengan tagihan provider (T11) selisih lebih dari 5%:** periksa harga lebih dulu.
+
+Langkahnya:
+
+1. Buka halaman harga provider (OpenAI: tier Standard) dan catat harga input, input cache, dan output per 1M token. Bagi dengan 1.000.000 untuk harga per token. Tulis dengan titik desimal, misalnya `2.0e-7`, karena `2e-7` terbaca sebagai teks dan ditolak `make unit`.
+2. Di branch baru, ubah ketiga harga setiap alias beserta tanggal dan sumber di komentar atas `config.yaml`. Jalankan `make unit` dan `make test`, lalu buat PR. Tes membaca harga dari `config.yaml`, jadi tidak perlu ikut diubah.
+3. Setelah PR di-merge, jalankan di VM:
+
+   ```sh
+   git pull
+   docker compose -p llm-gateway-vm -f deploy/compose.yaml -f deploy/compose.vm.yaml --env-file deploy/env/vm.env \
+     up -d --no-deps --force-recreate --wait --wait-timeout 300 litellm-a litellm-b
+   ```
+
+   `make up` tidak cukup. Compose tidak mendeteksi perubahan isi `config.yaml`, dan `git pull` mengganti file itu dengan file baru, sehingga container yang sedang berjalan tidak melihat isinya.
+4. Pastikan harga yang berlaku sudah yang baru:
+
+   ```sh
+   docker compose -p llm-gateway-vm -f deploy/compose.yaml -f deploy/compose.vm.yaml --env-file deploy/env/vm.env \
+     exec -T litellm-a grep -E 'model_name|cost' /app/config.yaml
+   ```
+
+Spend yang sudah tercatat tidak dihitung ulang; harga baru hanya berlaku untuk request berikutnya. Rekonsiliasi T11 yang melintasi waktu perubahan harga perlu snapshot baru setelah perubahan.
 
 ### Log, berhenti, dan menyalakan ulang
 

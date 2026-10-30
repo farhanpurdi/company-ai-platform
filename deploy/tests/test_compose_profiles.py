@@ -1,4 +1,5 @@
-"""Static checks on the compose profiles: no reverse proxy, only litellm-a is published (spec 4.1, 4.2, 10)."""
+"""Static checks on the compose profiles: no reverse proxy, only litellm-a is published,
+no price data fetched at startup (spec 4.1, 4.2, 5, 10)."""
 
 import re
 from pathlib import Path
@@ -67,3 +68,11 @@ def test_removed_variables_are_gone(path):
 def test_vm_env_example_sets_litellm_port():
     text = (DEPLOY / "env" / "vm.env.example").read_text(encoding="utf-8")
     assert re.search(r"^LITELLM_PORT=4000$", text, re.M)
+
+
+@pytest.mark.parametrize("service", ["litellm-a", "litellm-b"])
+def test_litellm_uses_cost_map_from_image(service):
+    # Otherwise LiteLLM downloads its cost map from GitHub main at every start, and
+    # unreviewed cached-input prices and output limits change budgets (spec 5).
+    env = _compose("compose.yaml")["services"][service]["environment"]
+    assert env.get("LITELLM_LOCAL_MODEL_COST_MAP") == "True"

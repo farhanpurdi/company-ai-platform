@@ -4,19 +4,27 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 import uuid
 from pathlib import Path
 from typing import Literal
 
 import httpx
+import yaml
 
 from gatewayctl.client import LiteLLMClient
 
 REPO = Path(__file__).resolve().parents[1]
 LOCAL_ENTITLEMENTS = REPO / "entitlements" / "local.yaml"
+LITELLM_CONFIG = REPO / "deploy" / "litellm" / "config.yaml"
 OPERATOR = "test@local"
 TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 REPLICAS = ("litellm-a", "litellm-b")
+# Usage the mock reports for every request until a test changes it (mock_upstream DEFAULT_USAGE).
+MOCK_PROMPT_TOKENS = 1000
+MOCK_COMPLETION_TOKENS = 500
+SPEND_POLL_S = 2.0
+SPEND_WAIT_S = 30.0
 
 
 def _env(name: str, default: str | None = None) -> str:
@@ -100,6 +108,13 @@ class Mock:
             json={"model": model, "mode": mode, "count": count, "delay_ms": delay_ms},
         ).raise_for_status()
 
+    def usage(self, prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0) -> None:
+        """Usage reported from now on; cached_tokens is the part of prompt_tokens OpenAI served from cache."""
+        self._http.post(
+            "/_mock/usage",
+            json={"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "cached_tokens": cached_tokens},
+        ).raise_for_status()
+
     def requests(self) -> list[dict]:
         r = self._http.get("/_mock/requests")
         r.raise_for_status()
@@ -133,3 +148,37 @@ def issue_key(user: str, *, file: Path = LOCAL_ENTITLEMENTS) -> str:
 
 def admin() -> LiteLLMClient:
     return LiteLLMClient(_env("LITELLM_BASE_URL"), _env("LITELLM_MASTER_KEY"))
+
+
+def model_prices(alias: str) -> dict[str, float]:
+    """Per-token prices pinned for an alias in the LiteLLM config the gateway runs."""
+    for entry in yaml.safe_load(LITELLM_CONFIG.read_text(encoding="utf-8"))["model_list"]:
+        if entry["model_name"] == alias:
+            return entry["model_info"]
+    raise KeyError(alias)
+
+
+def key_spend(key: str) -> float:
+    return float(admin().key_info(key)["info"].get("spend") or 0.0)
+
+
+def settled_key_spend(key: str, expected_min: float) -> float:
+    """Read key spend every SPEND_POLL_S until two consecutive reads agree.
+
+    A read below expected_min (spend of the requests the mock already answered)
+    means the spend writer has not flushed yet, so it never counts as settled;
+    if it never settles the test fails rather than report a low value.
+    """
+    deadline = time.monotonic() + SPEND_WAIT_S
+    previous = None
+    while True:
+        spend = key_spend(key)
+        if spend == previous and spend >= expected_min - 1e-9:
+            return spend
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                f"spend key belum stabil setelah {SPEND_WAIT_S:.0f} detik: "
+                f"terbaca {spend:.4f}, minimal {expected_min:.4f}"
+            )
+        previous = spend
+        time.sleep(SPEND_POLL_S)

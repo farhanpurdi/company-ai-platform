@@ -34,6 +34,8 @@ class ScenarioIn(BaseModel):
 class UsageIn(BaseModel):
     prompt_tokens: int
     completion_tokens: int
+    # Part of prompt_tokens served from OpenAI's prompt cache.
+    cached_tokens: int = 0
 
 
 class MidStreamFailure(Exception):
@@ -80,7 +82,14 @@ class MockState:
 
 
 def _usage_block(usage: dict) -> dict:
-    return {**usage, "total_tokens": usage["prompt_tokens"] + usage["completion_tokens"]}
+    block = {
+        "prompt_tokens": usage["prompt_tokens"],
+        "completion_tokens": usage["completion_tokens"],
+        "total_tokens": usage["prompt_tokens"] + usage["completion_tokens"],
+    }
+    if usage.get("cached_tokens"):
+        block["prompt_tokens_details"] = {"cached_tokens": usage["cached_tokens"]}
+    return block
 
 
 def _error(status: int, err_type: str, code: str) -> JSONResponse:

@@ -21,4 +21,6 @@ def mock():
     try:
         yield m
     finally:
+        # Scenarios and usage a test set must not leak into tests without this fixture.
+        m.reset()
         m.close()
