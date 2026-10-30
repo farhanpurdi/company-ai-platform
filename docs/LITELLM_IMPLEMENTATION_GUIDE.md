@@ -47,7 +47,7 @@ Target: LiteLLM proxy dipakai seluruh tim dalam **±7 minggu**, melalui 4 fase d
 | Budget | Fail-closed juga untuk budget (`fail_closed_budget_enforcement: true`): request yang taksiran biaya terburuknya tidak muat di sisa budget ditolak |
 | Lisensi | Open source. Evaluasi Enterprise bila butuh SSO/SCIM/audit log bawaan |
 
-Di luar lingkup rilis awal: provider lain (Azure OpenAI, Gemini, DeepSeek, GLM), GPT-5.6 Luna, model lokal, portal custom, guardrail/PII masking otomatis, SCIM.
+Di luar lingkup rilis awal: provider lain (Azure OpenAI, Gemini, DeepSeek, GLM), GPT-5.6 Luna, model lokal, portal custom, guardrail/PII masking otomatis, SCIM. Provider kedua direncanakan di Fase 4 (bagian 6).
 
 ---
 
@@ -433,12 +433,15 @@ Minggu:   1          2      3      4      5      6      7
                   ◆ G1          ◆ G2          ◆ G3         ◆ Go-live
 ```
 
+Fase 4 tidak dijadwalkan; durasinya ditetapkan setelah provider kedua dipilih.
+
 | Gate | Syarat lolos |
 | --- | --- |
 | Gate 1 | Semua keputusan terkunci, secret dan akun OpenAI siap |
 | Gate 2 | Uji T01–T11 lulus, overshoot dalam toleransi, selisih spend < 5% |
 | Gate 3 | Uji T12–T16 lulus, dashboard/alert/audit aktif, runbook tersedia |
 | Go-live | 100% pengguna aktif lewat proxy, key OpenAI individual dicabut |
+| Gate 4 | Uji per provider lulus, sekring provider terpasang, rekonsiliasi berjalan (otomatis atau manual tercatat), runbook 8.3 diperbarui |
 
 Jika gate gagal, fase diperpanjang, bukan dilewati.
 
@@ -527,6 +530,31 @@ Governance:
 - [ ] Jadwal: rotasi master key dan API key OpenAI tiap 90 hari, review mapping alias tiap bulan, review harga bersama rekonsiliasi bulanan, upgrade LiteLLM lewat staging
 - [ ] Evaluasi kebutuhan SSO/SCIM/audit log bawaan dan lisensi Enterprise
 
+### Fase 4 — Otomatisasi rekonsiliasi dan provider kedua (setelah go-live)
+
+4a. Otomatisasi rekonsiliasi, dimulai setelah go-live:
+
+- [ ] Putuskan penyimpanan kunci admin provider (misalnya OpenAI Admin key): secret manager, siapa yang punya akses, dan jadwal rotasi
+- [ ] Job terjadwal per provider membandingkan spend gateway dengan API biaya provider dan mengirim alert bila selisih > 5%; rekonsiliasi manual (Fase 3) tetap menjadi cadangan
+
+4b. Provider kedua.
+
+Syarat masuk:
+
+- Go-live selesai dan rekonsiliasi bulanan sudah berjalan minimal satu bulan.
+- Provider dipilih dengan kriteria tertulis: kelas data dan region (`LLM_GATEWAY_ARCHITECTURE.md` §3.1, §12), harga terbuka termasuk harga cache, API atau laporan biaya, fitur batas belanja (blokir atau hanya alert), kompatibilitas OpenCode (streaming, tool calling), rate limit, dan akun atas nama perusahaan.
+
+Checklist:
+
+- [ ] Akun atau project khusus gateway di provider; credential hanya di secret manager
+- [ ] Sekring batas belanja di provider (§3.1)
+- [ ] Deployment baru di `config.yaml` dengan ketiga harga dipin (`make unit` memeriksa setiap entri `model_list`); tarif konteks panjang ikut dipin bila provider punya tier dan cost map berbeda
+- [ ] Keputusan mapping: alias baru atau deployment tambahan di alias yang sudah ada; fallback lintas provider hanya antar deployment dengan kelas data dan region yang sama (`LLM_GATEWAY_ARCHITECTURE.md` §8, §9)
+- [ ] Izin di `entitlements/*.yaml`: team mana yang boleh memakai alias baru
+- [ ] Budget team tetap satu angka lintas provider di gateway
+
+Uji: ulangi T01, T06, T07, T09 (bila ada fallback), T10, dan T11 untuk provider baru.
+
 ---
 
 ## 7. Skenario uji penerimaan
@@ -576,7 +604,7 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 
 1. Cek status OpenAI dan dashboard gateway (error rate, 429).
 2. Jika 429 karena limit organisasi: turunkan sementara `rpm_limit` team non-prioritas, identifikasi key dengan trafik terbesar.
-3. Jika OpenAI down: umumkan ke tim; tidak ada provider cadangan di rilis awal.
+3. Jika OpenAI down: umumkan ke tim; tidak ada provider cadangan di rilis awal. Setelah Fase 4, pakai fallback lintas provider bila diizinkan untuk alias itu.
 4. Setelah pulih: catat durasi dan dampak untuk evaluasi deployment kedua (mis. Azure OpenAI).
 
 ### 8.4 Rotasi API key OpenAI
@@ -616,7 +644,7 @@ Perintah lengkap ada di `docs/operator-guide.md`, "Mengubah harga model".
 
 | Risiko | Dampak | Mitigasi |
 | --- | --- | --- |
-| Satu provider (OpenAI) | Gangguan OpenAI menghentikan layanan | Diterima untuk rilis awal; alert dan runbook 8.3; Azure OpenAI sebagai deployment kedua di fase berikutnya |
+| Satu provider (OpenAI) | Gangguan OpenAI menghentikan layanan | Diterima untuk rilis awal; alert dan runbook 8.3; provider kedua di Fase 4 |
 | Rate limit organisasi OpenAI dipakai bersama | Satu agent berat memicu 429 untuk semua | Limit per key dan team di bawah limit organisasi; naikkan usage tier bila perlu |
 | Biaya Sol tinggi pada agent panjang | Budget team cepat habis | Terra sebagai default; Sol lewat entitlement; budget harian per user |
 | Harga provider berubah atau promo berakhir | Spend tidak cocok dengan tagihan; bila harga naik, budget bocor sebesar selisihnya | Harga dipin dan direview (§3.1, runbook 8.7), rekonsiliasi bulanan, cek perubahan harga otomatis, sekring di provider |
@@ -643,6 +671,7 @@ Perintah lengkap ada di `docs/operator-guide.md`, "Mengubah harga model".
 - [ ] Toleransi overshoot budget dan target waktu pencabutan key? Nilai sementara: 10% dari limit dan 5 menit (spec pilot §10); menunggu konfirmasi Gate 1.
 - [ ] Data apa yang tidak boleh dikirim ke OpenAI?
 - [ ] Siapa pemilik gateway dan admin per team?
+- [ ] Provider kedua apa, dan berdasarkan kriteria apa? (lihat Fase 4)
 
 ---
 
