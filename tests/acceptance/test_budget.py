@@ -1,34 +1,48 @@
 """T02 (budget exhausted) and T03 (parallel overshoot) against the mock upstream (spec 8.2).
 
-One mock request on company-fast costs $0.01 (1000 input + 500 output tokens on Terra).
+Every mock request reports the same usage (MOCK_PROMPT_TOKENS + MOCK_COMPLETION_TOKENS),
+priced at the company-fast rates pinned in deploy/litellm/config.yaml.
 """
 
 from __future__ import annotations
 
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 
-from helpers import REPLICAS, admin, chat, gateway, issue_key, replica
+from helpers import (
+    MOCK_COMPLETION_TOKENS,
+    MOCK_PROMPT_TOKENS,
+    REPLICAS,
+    chat,
+    gateway,
+    issue_key,
+    model_prices,
+    replica,
+    settled_key_spend,
+)
 
-REQUEST_COST_USD = 0.01
+PRICES = model_prices("company-fast")
+REQUEST_COST_USD = (
+    MOCK_PROMPT_TOKENS * PRICES["input_cost_per_token"] + MOCK_COMPLETION_TOKENS * PRICES["output_cost_per_token"]
+)
 T02_MAX_REQUESTS = 30
 T02_PAUSE_S = 1.0
 # Budget enforcement fails closed (spec 5): a request is admitted only if its
-# worst-case cost fits. 500 output tokens reserve $0.0075, so the fifth $0.01
-# request still fits $0.05; without max_tokens the 16384-token reservation
-# ($0.25) is larger than the whole budget.
-T02_MAX_TOKENS = 500
+# worst-case cost fits. max_tokens at the mock's completion tokens keeps each
+# reservation below a request's real cost, so the $0.05 key admits at least five;
+# without max_tokens the 16384-token reservation is larger than the whole budget.
+T02_MAX_TOKENS = MOCK_COMPLETION_TOKENS
 T03_LIMIT_USD = 0.10
 T03_PARALLEL = 20
 T03_TOLERANCE = 0.10
 # LiteLLM reserves each request's worst-case cost before calling upstream. Without
-# max_tokens that is 16384 output tokens ($0.25), more than the whole key budget,
-# so requests are admitted one at a time and the run never nears the limit. 700
-# output tokens reserve $0.0105, just over the mock's real $0.01.
-T03_MAX_TOKENS = 700
-SPEND_POLL_S = 2.0
-SPEND_WAIT_S = 30.0
+# max_tokens that is 16384 output tokens, more than the whole key budget, so
+# requests are admitted one at a time and the run never nears the limit. Enough
+# output tokens to cover the real cost (the prompt itself is a few tokens) make
+# each reservation just over what the request costs.
+T03_MAX_TOKENS = math.ceil(REQUEST_COST_USD / PRICES["output_cost_per_token"])
 
 
 def test_t02_budget_exhausted(applied, mock):
@@ -47,32 +61,6 @@ def test_t02_budget_exhausted(applied, mock):
     assert "budget_exceeded" in last.text, last.text
 
 
-def _key_spend(key: str) -> float:
-    return float(admin().key_info(key)["info"].get("spend") or 0.0)
-
-
-def _settled_spend(key: str, expected_min: float) -> float:
-    """Read key spend every SPEND_POLL_S until two consecutive reads agree.
-
-    A read below expected_min (spend of the requests the mock already answered)
-    means the spend writer has not flushed yet, so it never counts as settled;
-    if it never settles the test fails rather than report a low overshoot.
-    """
-    deadline = time.monotonic() + SPEND_WAIT_S
-    previous = None
-    while True:
-        spend = _key_spend(key)
-        if spend == previous and spend >= expected_min - 1e-9:
-            return spend
-        if time.monotonic() >= deadline:
-            raise AssertionError(
-                f"spend key belum stabil setelah {SPEND_WAIT_S:.0f} detik: "
-                f"terbaca {spend:.4f}, minimal {expected_min:.4f}"
-            )
-        previous = spend
-        time.sleep(SPEND_POLL_S)
-
-
 def test_t03_parallel_overshoot_within_tolerance(applied, mock, capsys):
     key = issue_key("parallel1@local.test")
     # Spread evenly over both replicas (spec 8.2): without a load balancer the
@@ -88,7 +76,7 @@ def test_t03_parallel_overshoot_within_tolerance(applied, mock, capsys):
     upstream = len(mock.requests())
     upstream_cost = upstream * REQUEST_COST_USD
     # The mock knows the true cost; recorded spend can only lag behind it.
-    spend = max(_settled_spend(key, upstream_cost), upstream_cost)
+    spend = max(settled_key_spend(key, upstream_cost), upstream_cost)
     overshoot = (spend - T03_LIMIT_USD) / T03_LIMIT_USD
     ok = sum(r.status_code == 200 for r in responses)
     # Shown even when the test passes: the numbers are recorded for Gate 2.
