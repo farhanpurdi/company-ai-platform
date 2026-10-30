@@ -53,14 +53,22 @@ Harga di `deploy/litellm/config.yaml` harus sudah sama dengan halaman harga Open
 
 ## 6. Catatan hasil Gate 2
 
+Status per 2026-10-31: 10 dari 11 uji lulus. T11 belum lulus dan menunggu diulang.
+
 | Uji | Hasil | Tanggal | Operator |
 | --- | --- | --- | --- |
-| T03 overshoot (`make test`, baris `T03 spend=... overshoot=...`) | | | |
-| T05 waktu pencabutan (`T05 revocation seconds=...`, target <= 300) | | | |
-| T06 smoke otomatis + sesi manual | | | |
-| T07 smoke otomatis + tugas agent | | | |
-| T11 spend gateway / OpenAI / selisih | | | |
+| T01 akses model (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
+| T02 budget habis (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
+| T03 overshoot (`make test`, baris `T03 spend=... overshoot=...`) | Lulus: `T03 spend=0.0960 overshoot=-4.0% ok=12 rejected=8 upstream=12` | 2026-10-30 | Farhan Purdi |
+| T04 rate limit (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
+| T05 waktu pencabutan (`T05 revocation seconds=...`, target <= 300) | Lulus: `T05 revocation seconds=0 statuses={'litellm-a': 401, 'litellm-b': 401}` | 2026-10-30 | Farhan Purdi |
+| T06 smoke otomatis + sesi manual | Lulus. Smoke 2/2 PASS (`company-coding`, `company-reasoning`). Sesi OpenCode manual di kedua alias: token mengalir bertahap, tanpa putus atau timeout | 2026-10-30 | Farhan Purdi |
+| T07 smoke otomatis + tugas agent | Lulus. Smoke 2/2 PASS (`get_current_time` di kedua alias). Tugas agent `belanja.py` di kedua alias: membaca dan mengedit file, menjalankan perintah, 16 unittest OK | 2026-10-30 | Farhan Purdi |
+| T08 retry (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
+| T09 fallback (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
+| T10 kebersihan log (`make test`) | Lulus: `T10 clean (4 nilai, sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs)` | 2026-10-30 | Farhan Purdi |
+| T11 spend gateway / OpenAI / selisih | Belum lulus. Percobaan 1, 13:11:23–13:38:16 UTC: gateway $0.4216 di jendela uji ($0.4426 kumulatif hari itu) / OpenAI belum dicatat / selisih belum dihitung. Spend dihitung dengan harga yang sudah usang (Terra $2.50/$15, Sol $5/$30); harga diperbarui di PR #10. Ulangi setelah deploy, pada hari UTC tanpa pemakaian dengan harga lama | 2026-10-30 | Farhan Purdi |
 
-T01-T05 dan T08-T10 diperoleh dari `make test` terhadap stack lokal (mock upstream); salin keluaran `T03` dan `T05` dari sana.
+T01-T05 dan T08-T10 diperoleh dari `make test` terhadap stack lokal (mock upstream); salin keluaran `T03`, `T05`, dan `T10` dari sana. Hasil di atas berasal dari commit `5b9a44a`, yang isinya sama dengan `main` di `c1b52a7` (PR #10): unit 341 passed, integration dan acceptance 17 passed. `make test` itu dijalankan lewat Claude Code di laptop operator. T06, T07, dan percobaan 1 T11 dijalankan di VM.
 
 Setelah selesai, blokir key smoke: `make ctl ENV=vm ARGS='key block --user smoke@perusahaan.com'`.
