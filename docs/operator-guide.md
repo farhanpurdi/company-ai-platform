@@ -142,7 +142,9 @@ Menghapus member dari file berarti offboarding: semua key yang diterbitkan `gate
 
 ### Mengubah harga model
 
-Spend dan budget dihitung dari harga per token yang dipin di `deploy/litellm/config.yaml`: `input_cost_per_token`, `output_cost_per_token`, dan `cache_read_input_token_cost` (input yang dilayani dari cache prompt provider). LiteLLM tidak mengunduh harga dari internet (`LITELLM_LOCAL_MODEL_COST_MAP=True`). Tarif untuk konteks di atas 272K token dan batas output model berasal dari tabel di image LiteLLM yang dipin, sehingga hanya berubah saat image di-upgrade.
+Spend dan budget dihitung dari harga per token yang dipin di `deploy/litellm/config.yaml`: `input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost` (input yang dilayani dari cache prompt provider), dan `cache_creation_input_token_cost` (input yang ditulis ke cache prompt). LiteLLM tidak mengunduh harga dari internet (`LITELLM_LOCAL_MODEL_COST_MAP=True`). Tarif untuk konteks di atas 272K token dan batas output model berasal dari tabel di image LiteLLM yang dipin, sehingga hanya berubah saat image di-upgrade.
+
+OpenAI juga punya harga cache write 12 jam (kolom "12h write", dua kali harga "30m write"). Gateway tidak mengenal harga ini. Bila tagihan OpenAI memuat kategori "cache writes - 12hr" yang tidak nol, spend gateway untuk bagian itu lebih rendah dari tagihan.
 
 Kapan harga perlu diubah:
 
@@ -153,8 +155,8 @@ Kapan harga perlu diubah:
 
 Langkahnya:
 
-1. Buka halaman harga provider (OpenAI: tier Standard) dan catat harga input, input cache, dan output per 1M token. Bagi dengan 1.000.000 untuk harga per token. Tulis dengan titik desimal, misalnya `2.0e-7`, karena `2e-7` terbaca sebagai teks dan ditolak `make unit`.
-2. Di branch baru, ubah ketiga harga setiap alias beserta tanggal dan sumber di komentar atas `config.yaml`. Jalankan `make unit` dan `make test`, lalu buat PR. Tes membaca harga dari `config.yaml`, jadi tidak perlu ikut diubah.
+1. Buka halaman harga provider (OpenAI: tier Standard, kolom short context) dan catat harga input, cached input, cache write (kolom "30m write"), dan output per 1M token. Bagi dengan 1.000.000 untuk harga per token. Tulis dengan titik desimal, misalnya `2.0e-7`, karena `2e-7` terbaca sebagai teks dan ditolak `make unit`.
+2. Di branch baru, ubah keempat harga setiap alias beserta tanggal dan sumber di komentar atas `config.yaml`. Jalankan `make unit` dan `make test`, lalu buat PR. Tes membaca harga dari `config.yaml`, jadi tidak perlu ikut diubah.
 3. Setelah PR di-merge, jalankan di VM:
 
    ```sh

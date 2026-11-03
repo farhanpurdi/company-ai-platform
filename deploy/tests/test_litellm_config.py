@@ -6,7 +6,12 @@ import pytest
 import yaml
 
 CONFIG = Path(__file__).resolve().parents[1] / "litellm" / "config.yaml"
-PRICE_KEYS = ("input_cost_per_token", "output_cost_per_token", "cache_read_input_token_cost")
+PRICE_KEYS = (
+    "input_cost_per_token",
+    "output_cost_per_token",
+    "cache_read_input_token_cost",
+    "cache_creation_input_token_cost",
+)
 
 
 def _config() -> dict:
