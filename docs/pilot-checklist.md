@@ -53,7 +53,7 @@ Harga di `deploy/litellm/config.yaml` harus sudah sama dengan halaman harga Open
 
 ## 6. Catatan hasil Gate 2
 
-Status per 2026-10-31: 10 dari 11 uji lulus. T11 belum lulus dan menunggu diulang.
+Status per 2026-11-03: 11 dari 11 uji lulus.
 
 | Uji | Hasil | Tanggal | Operator |
 | --- | --- | --- | --- |
@@ -67,8 +67,8 @@ Status per 2026-10-31: 10 dari 11 uji lulus. T11 belum lulus dan menunggu diulan
 | T08 retry (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
 | T09 fallback (`make test`) | Lulus | 2026-10-30 | Farhan Purdi |
 | T10 kebersihan log (`make test`) | Lulus: `T10 clean (4 nilai, sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs)` | 2026-10-30 | Farhan Purdi |
-| T11 spend gateway / OpenAI / selisih | Belum lulus. Percobaan 1, 13:11:23–13:38:16 UTC: gateway $0.4216 di jendela uji ($0.4426 kumulatif hari itu) / OpenAI belum dicatat / selisih belum dihitung. Spend dihitung dengan harga yang sudah usang (Terra $2.50/$15, Sol $5/$30); harga diperbarui di PR #10. Ulangi setelah deploy, pada hari UTC tanpa pemakaian dengan harga lama | 2026-10-30 | Farhan Purdi |
+| T11 spend gateway / OpenAI / selisih | Lulus. Percobaan 2, hari UTC 2026-11-02 dengan harga PR #10; satu-satunya pemakaian hari itu (03:47:13–06:38:26 UTC): gateway $0.6046 (Terra $0.1615, Sol $0.4431) / OpenAI Project $0.605 (Terra $0.161, Sol $0.444) / selisih 0.07% (Terra 0.3%, Sol 0.2%), di bawah presisi dashboard ($0.001 per kategori). Biaya OpenAI mencakup cache writes (Terra $0.047, Sol $0.105); gateway menghitungnya dengan `cache_creation_input_token_cost` dari cost map bawaan image (Terra $2.50, Sol $5 per 1M), yang tidak dipin di config. Percobaan 1 (2026-10-30, gateway $0.4216) tidak dipakai karena dihitung dengan harga usang (Terra $2.50/$15, Sol $5/$30) | 2026-11-02 | Farhan Purdi |
 
-T01-T05 dan T08-T10 diperoleh dari `make test` terhadap stack lokal (mock upstream); salin keluaran `T03`, `T05`, dan `T10` dari sana. Hasil di atas berasal dari commit `5b9a44a`, yang isinya sama dengan `main` di `c1b52a7` (PR #10): unit 341 passed, integration dan acceptance 17 passed. `make test` itu dijalankan lewat Claude Code di laptop operator. T06, T07, dan percobaan 1 T11 dijalankan di VM.
+T01-T05 dan T08-T10 diperoleh dari `make test` terhadap stack lokal (mock upstream); salin keluaran `T03`, `T05`, dan `T10` dari sana. Hasil di atas berasal dari commit `5b9a44a`, yang isinya sama dengan `main` di `c1b52a7` (PR #10): unit 341 passed, integration dan acceptance 17 passed. `make test` itu dijalankan lewat Claude Code di laptop operator. T06, T07, dan kedua percobaan T11 dijalankan di VM.
 
 Setelah selesai, blokir key smoke: `make ctl ENV=vm ARGS='key block --user smoke@perusahaan.com'`.
