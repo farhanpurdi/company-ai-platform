@@ -36,6 +36,8 @@ class UsageIn(BaseModel):
     completion_tokens: int
     # Part of prompt_tokens served from OpenAI's prompt cache.
     cached_tokens: int = 0
+    # Part of prompt_tokens written to OpenAI's prompt cache.
+    cache_write_tokens: int = 0
 
 
 class MidStreamFailure(Exception):
@@ -87,8 +89,9 @@ def _usage_block(usage: dict) -> dict:
         "completion_tokens": usage["completion_tokens"],
         "total_tokens": usage["prompt_tokens"] + usage["completion_tokens"],
     }
-    if usage.get("cached_tokens"):
-        block["prompt_tokens_details"] = {"cached_tokens": usage["cached_tokens"]}
+    details = {k: usage[k] for k in ("cached_tokens", "cache_write_tokens") if usage.get(k)}
+    if details:
+        block["prompt_tokens_details"] = details
     return block
 
 

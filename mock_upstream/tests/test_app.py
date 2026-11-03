@@ -48,6 +48,17 @@ def test_usage_itemizes_cached_prompt_tokens_like_openai(client):
     assert usage["prompt_tokens_details"] == {"cached_tokens": 800}
 
 
+
+def test_usage_itemizes_cache_write_tokens_like_openai(client):
+    client.post(
+        "/_mock/usage",
+        json={"prompt_tokens": 1000, "completion_tokens": 500, "cached_tokens": 800, "cache_write_tokens": 150},
+    )
+    usage = client.post("/v1/chat/completions", json=BODY).json()["usage"]
+    # Cache writes are also part of prompt_tokens; OpenAI bills them at the write price.
+    assert usage["prompt_tokens"] == 1000
+    assert usage["prompt_tokens_details"] == {"cached_tokens": 800, "cache_write_tokens": 150}
+
 def test_stream_yields_5_chunks_then_usage_then_done(client):
     with client.stream("POST", "/v1/chat/completions", json={**BODY, "stream": True}) as r:
         assert r.status_code == 200
