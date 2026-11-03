@@ -108,11 +108,19 @@ class Mock:
             json={"model": model, "mode": mode, "count": count, "delay_ms": delay_ms},
         ).raise_for_status()
 
-    def usage(self, prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0) -> None:
-        """Usage reported from now on; cached_tokens is the part of prompt_tokens OpenAI served from cache."""
+    def usage(
+        self, prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0, cache_write_tokens: int = 0
+    ) -> None:
+        """Usage reported from now on; cached_tokens and cache_write_tokens are the parts of
+        prompt_tokens OpenAI served from and wrote to its prompt cache."""
         self._http.post(
             "/_mock/usage",
-            json={"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "cached_tokens": cached_tokens},
+            json={
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cached_tokens": cached_tokens,
+                "cache_write_tokens": cache_write_tokens,
+            },
         ).raise_for_status()
 
     def requests(self) -> list[dict]:
