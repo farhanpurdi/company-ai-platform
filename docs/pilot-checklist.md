@@ -6,14 +6,16 @@ Dasar menyalakan stack, perintah `gatewayctl`, dan troubleshooting ada di `docs/
 
 Nilai sementara (spec bagian 10) berlaku sampai dikonfirmasi. Catat keputusan dan tanggalnya.
 
+Gate 1 ditutup 2026-11-03: semua nilai sementara dikonfirmasi tanpa perubahan.
+
 | Keputusan | Nilai sementara | Dikonfirmasi (nilai, tanggal, oleh) |
 | --- | --- | --- |
-| Zona waktu reset budget | UTC | |
-| Toleransi overshoot (T03) | 10% dari limit | |
-| Target waktu pencabutan key (T05) | 5 menit | |
-| Akses jaringan dan TLS | HTTP langsung ke `litellm-a` di `LITELLM_PORT`; TLS dan proxy oleh DevOps (spec bagian 10) | |
-| Versi LiteLLM | `v1.106.4` dipin digest (tidak ada tag `-stable` berversi) | |
-| Harga Terra/Sol (`model_info`) | Per 1M token, tier Standard, input / input cache / output: Terra $2 / $0.20 / $12, Sol $4 / $0.40 / $20. Harga Sol promo sampai setidaknya 2026-11-21; cek ulang pada tanggal itu (`docs/operator-guide.md`, "Mengubah harga model") | Diverifikasi ke halaman harga OpenAI: |
+| Zona waktu reset budget | UTC | UTC, 2026-11-03, Farhan Purdi |
+| Toleransi overshoot (T03) | 10% dari limit | 10%, 2026-11-03, Farhan Purdi |
+| Target waktu pencabutan key (T05) | 5 menit | 5 menit, 2026-11-03, Farhan Purdi |
+| Akses jaringan dan TLS | HTTP langsung ke `litellm-a` di `LITELLM_PORT`; TLS dan proxy oleh DevOps (spec bagian 10) | Sesuai nilai sementara, 2026-11-03, Farhan Purdi |
+| Versi LiteLLM | `v1.106.4` dipin digest (tidak ada tag `-stable` berversi) | `v1.106.4` (`sha256:c169fb3a…`), 2026-11-03, Farhan Purdi |
+| Harga Terra/Sol (`model_info`) | Per 1M token, tier Standard, input / input cache / cache write (30m) / output: Terra $2 / $0.20 / $2.50 / $12, Sol $4 / $0.40 / $5 / $20. Harga Sol promo sampai setidaknya 2026-11-21; cek ulang pada tanggal itu (`docs/operator-guide.md`, "Mengubah harga model") | Sesuai halaman harga OpenAI (dicek 2026-11-03), 2026-11-03, Farhan Purdi |
 
 ## 2. Deploy VM
 
@@ -71,4 +73,4 @@ Status per 2026-11-03: 11 dari 11 uji lulus.
 
 T01-T05 dan T08-T10 diperoleh dari `make test` terhadap stack lokal (mock upstream); salin keluaran `T03`, `T05`, dan `T10` dari sana. Hasil di atas berasal dari commit `5b9a44a`, yang isinya sama dengan `main` di `c1b52a7` (PR #10): unit 341 passed, integration dan acceptance 17 passed. `make test` itu dijalankan lewat Claude Code di laptop operator. T06, T07, dan kedua percobaan T11 dijalankan di VM.
 
-Setelah selesai, blokir key smoke: `make ctl ENV=vm ARGS='key block --user smoke@perusahaan.com'`.
+Setelah selesai, blokir key smoke: `make ctl ENV=vm ARGS='key block --user smoke@perusahaan.com'`. Key smoke diblokir 2026-11-03.
