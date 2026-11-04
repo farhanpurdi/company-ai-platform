@@ -54,6 +54,12 @@ def test_failure_target_calls_script():
     assert "scripts/failure-tests.sh $(ENV) $(ARGS)" in recipe
 
 
+def test_loadtest_target_runs_tests_load():
+    recipe = " ".join(_recipe("loadtest"))
+    assert "tests/load" in recipe
+    assert "tests/acceptance" not in recipe
+
+
 def test_smoke_target_passes_smoke_key_to_tools():
     recipe = " ".join(_recipe("smoke"))
     assert "-e SMOKE_KEY" in recipe

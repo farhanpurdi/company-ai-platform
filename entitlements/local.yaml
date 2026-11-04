@@ -47,6 +47,16 @@ teams:
       - user_id: rate1@local.test
         key: { rpm_limit: 3 }
 
+  # T16 load test: limits high enough that only gateway capacity is measured.
+  qa-load:
+    alias: "QA Load (uji)"
+    models: [company-coding]
+    budget: { max_usd: 10000, duration: 30d }
+    rpm_limit: 6000
+    members:
+      - user_id: load1@local.test
+        key: { rpm_limit: 6000, budgets: [{ duration: 30d, max_usd: 1000 }] }
+
 service_accounts:
   svc-test:
     team: it-developer

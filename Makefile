@@ -21,7 +21,7 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks backup restore test-failure
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks backup restore test-failure loadtest
 
 # Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
 hooks:
@@ -88,6 +88,11 @@ restore:
 # stop Redis/Postgres for a while. make test-failure [ARGS='t12 t13']
 test-failure:
 	scripts/failure-tests.sh $(ENV) $(ARGS)
+
+# T16: first-token overhead at 25 and 50 parallel streams (mock upstream). Run
+# `make apply` first so the qa-load team exists. Not together with make test.
+loadtest:
+	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider tests/load -v
 
 # Unit, then integration and acceptance against the local stack (make up),
 # then the T10 log scan on the host.
