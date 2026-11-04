@@ -34,6 +34,14 @@ def test_gatewayctl_recipes_are_silent(target):
         assert line.startswith("@"), f"{target}: make would echo {line!r} to stdout"
 
 
+def test_backup_target_is_silent_and_calls_script():
+    # stdout of `make -s backup` must be only the dump path.
+    recipe = _recipe("backup")
+    assert any("scripts/backup.sh $(ENV)" in line for line in recipe)
+    for line in recipe:
+        assert line.startswith("@"), f"backup: make would echo {line!r} to stdout"
+
+
 def test_smoke_target_passes_smoke_key_to_tools():
     recipe = " ".join(_recipe("smoke"))
     assert "-e SMOKE_KEY" in recipe

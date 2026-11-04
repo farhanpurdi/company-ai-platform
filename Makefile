@@ -21,7 +21,7 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks backup
 
 # Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
 hooks:
@@ -73,6 +73,11 @@ apply:
 # make ctl ARGS='key issue --user U --label L' (also key block/list)
 ctl:
 	@$(CTL) $(ARGS)
+
+# Verified pg_dump into var/backups/. Silent (@): stdout is only the dump path,
+# so `path=$(make -s backup)` works. Retention: BACKUP_KEEP_DAYS (default 7).
+backup:
+	@scripts/backup.sh $(ENV)
 
 # Unit, then integration and acceptance against the local stack (make up),
 # then the T10 log scan on the host.
