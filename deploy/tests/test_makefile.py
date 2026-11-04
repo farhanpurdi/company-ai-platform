@@ -49,6 +49,11 @@ def test_restore_target_passes_confirm_and_backup():
     assert '"$(BACKUP)"' in recipe
 
 
+def test_failure_target_calls_script():
+    recipe = " ".join(_recipe("test-failure"))
+    assert "scripts/failure-tests.sh $(ENV) $(ARGS)" in recipe
+
+
 def test_smoke_target_passes_smoke_key_to_tools():
     recipe = " ".join(_recipe("smoke"))
     assert "-e SMOKE_KEY" in recipe

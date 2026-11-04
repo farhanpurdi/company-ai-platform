@@ -21,7 +21,7 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks backup restore
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks backup restore test-failure
 
 # Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
 hooks:
@@ -83,6 +83,11 @@ backup:
 # Without CONFIRM=1 it only prints the plan. Never on ENV=vm without the repo owner.
 restore:
 	CONFIRM="$(CONFIRM)" scripts/restore.sh $(ENV) "$(BACKUP)"
+
+# T12 (Redis down), T13 (Postgres down) and T15 (restore) on the LOCAL stack only: they
+# stop Redis/Postgres for a while. make test-failure [ARGS='t12 t13']
+test-failure:
+	scripts/failure-tests.sh $(ENV) $(ARGS)
 
 # Unit, then integration and acceptance against the local stack (make up),
 # then the T10 log scan on the host.
