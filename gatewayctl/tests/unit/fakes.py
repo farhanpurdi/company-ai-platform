@@ -42,6 +42,9 @@ class RecordingClient:
     def member_delete(self, team_id, user_id):
         self._record("member_delete", team_id, user_id)
 
+    def user_update(self, user_id, user_role):
+        self._record("user_update", user_id, user_role)
+
     def key_generate(self, payload):
         self._record("key_generate", payload)
         return {"key": RAW_KEY, "token": "hash-new-0001"}

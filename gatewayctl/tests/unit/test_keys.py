@@ -34,6 +34,18 @@ def desired():
     )
 
 
+def desired_with_scraper():
+    base = desired()
+    return DesiredState(
+        teams=base.teams,
+        members={
+            **base.members,
+            "scraper": MemberSpec("scraper", "dev", None, "service_account", "proxy_admin_viewer"),
+        },
+        key_policies={**base.key_policies, "scraper": KeyPolicy(frozenset({"company-fast"}), 10, ())},
+    )
+
+
 def akey(alias, user, token, *, team="dev", blocked=False, managed=True, spend=0.0):
     return ActualKey(token, alias, user, team, blocked, POLICY, managed, spend)
 
@@ -198,3 +210,17 @@ def test_block_audit_failure_marks_key_as_applied(audit, monkeypatch):
     assert info.value.applied is True
     assert info.value.blocked == []
     assert client.calls == [("key_block", "tok-a")]
+
+
+def test_issue_key_sets_admin_viewer_role_before_generating(audit):
+    client = RecordingClient()
+    raw = issue_key(desired_with_scraper(), state(), client, audit, "scraper", "scrape")
+    assert raw == RAW_KEY
+    assert client.names == ["user_update", "key_generate"]
+    assert client.calls[0] == ("user_update", "scraper", "proxy_admin_viewer")
+
+
+def test_issue_key_without_role_does_not_touch_user(audit):
+    client = RecordingClient()
+    issue_key(desired(), state(), client, audit, "svc-bot", "bot")
+    assert client.names == ["key_generate"]

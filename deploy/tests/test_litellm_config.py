@@ -25,6 +25,17 @@ def test_budget_enforcement_fails_closed():
     assert settings.get("fail_closed_budget_enforcement") is True
 
 
+def test_prometheus_metrics_enabled():
+    s = _config()["litellm_settings"]
+    assert s.get("callbacks") == ["prometheus"]
+    assert s.get("service_callback") == ["prometheus_system"]
+
+
+def test_metrics_endpoint_keeps_auth():
+    s = _config()["litellm_settings"]
+    assert s.get("require_auth_for_metrics_endpoint", True) is not False
+
+
 @pytest.mark.parametrize("entry", _config()["model_list"], ids=lambda e: e["model_name"])
 def test_alias_pins_every_price(entry):
     # A price left out comes from LiteLLM's cost map instead of a reviewed value

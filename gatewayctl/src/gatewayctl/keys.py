@@ -40,6 +40,9 @@ def issue_key(
     alias = f"{owner}-{label}"
     if any(k.key_alias == alias for k in actual.keys):
         raise ValueError(f"alias key '{alias}' sudah dipakai; pilih label lain")
+    if member.role:
+        # Idempotent; the user exists after `apply` (member_add creates it).
+        client.user_update(owner, member.role)
     result = client.key_generate(
         {
             "user_id": owner,

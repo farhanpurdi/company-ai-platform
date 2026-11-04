@@ -232,6 +232,51 @@ def test_service_account_models_not_subset(tmp_path, config):
     assert "company-reasoning" in err.message
 
 
+def test_service_account_admin_viewer_role(tmp_path, config):
+    s = load_entitlements(
+        write(
+            tmp_path,
+            """\
+            version: 1
+            teams:
+              finance:
+                models: [company-fast]
+                budget: { max_usd: 10, duration: 30d }
+                rpm_limit: 100
+            service_accounts:
+              scraper:
+                team: finance
+                role: proxy_admin_viewer
+              svc:
+                team: finance
+            """,
+        ),
+        config,
+    )
+    assert s.members["scraper"].role == "proxy_admin_viewer"
+    assert s.members["svc"].role is None
+
+
+def test_service_account_unknown_role_rejected(tmp_path, config):
+    err = load_error(
+        tmp_path,
+        """\
+        version: 1
+        teams:
+          finance:
+            models: [company-fast]
+            budget: { max_usd: 10, duration: 30d }
+            rpm_limit: 100
+        service_accounts:
+          svc:
+            team: finance
+            role: proxy_admin
+        """,
+        config,
+    )
+    assert err.path == "service_accounts.svc.role"
+
+
 def test_fallback_target_missing(tmp_path, config):
     err = load_error(
         tmp_path,
