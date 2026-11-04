@@ -334,6 +334,27 @@ Pakai gateway hanya saat laptop terhubung ke jaringan kantor, karena key terkiri
 
 Gateway siap. Ikuti `docs/pilot-checklist.md` mulai dari langkah 2.5 (menerbitkan key smoke), lalu bagian 3 sampai 6.
 
+### B9. Backup harian (crontab)
+
+Backup memakai `make backup`; hasilnya di `var/backups/` di VM. Pasang jadwalnya sekali dengan `crontab -e` sebagai user yang menjalankan Docker:
+
+```
+PATH=/usr/local/bin:/usr/bin:/bin
+15 2 * * * cd <path-repo> && make -s backup ENV=vm >> var/backups/backup.log 2>&1
+```
+
+Ganti `<path-repo>` dengan lokasi clone repo. Tes manual dulu: `make -s backup ENV=vm` harus mencetak satu path dump, dan `ls -l var/backups` menampilkan `-rw-------`. Keesokan harinya cek `var/backups/backup.log` dan dump baru. DevOps menyalin `var/backups/` keluar VM dan memberi alert bila dump terbaru lebih tua dari 26 jam (`docs/devops-handoff.md`).
+
+### B10. Key untuk Prometheus DevOps
+
+Service account `prometheus` (di `entitlements/pilot.yaml`) adalah admin read-only: boleh membaca `/metrics`, tidak bisa memanggil model atau mengubah apa pun. Setelah `make apply ENV=vm`, terbitkan key-nya:
+
+```sh
+make -s ctl ENV=vm ARGS='key issue --user prometheus --label scrape'
+```
+
+Key `sk-...` tampil sekali. Kirim ke DevOps lewat kanal aman, jangan ditulis ke file atau chat, lalu jalankan `clear`. Bila replika baru saja mendapat config baru, nyalakan ulang dulu seperti di `docs/gate3-checklist.md` bagian 1 supaya `/metrics` aktif. Cara memakainya ada di `docs/devops-handoff.md` bagian 3.
+
 ### Nanti: proxy DevOps di depan VM
 
 HTTP langsung ke `litellm-a` hanya untuk pilot. Sebelum gateway dipakai lebih luas, DevOps memasang proxy di depan VM yang menyediakan (spec bagian 10):
@@ -397,6 +418,10 @@ Pemblokiran berlaku seketika.
 ### Mengubah budget atau model yang boleh dipakai
 
 Ubah `budget`, `rpm_limit`, atau `models` di file entitlements, lalu `make plan` dan `make apply`. Jangan mengubahnya lewat dashboard atau `curl` ke API admin, karena perubahan itu akan ditimpa lagi oleh `make apply` berikutnya.
+
+### Memulihkan dari backup
+
+Memulihkan database dari dump (VM rusak atau data salah) dijelaskan di `docs/operator-guide.md`, bagian "Backup dan restore". `make restore ENV=vm` mengganti isi database produksi, jadi hanya dijalankan atas permintaan pemilik repo, dan `LITELLM_SALT_KEY` harus sama dengan saat backup dibuat.
 
 ### Melihat log
 

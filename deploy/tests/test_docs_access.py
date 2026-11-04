@@ -13,9 +13,11 @@ STALE = [
 ]
 # Path -> text that must appear.
 DOCS = {
-    "docs/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1"],
-    "docs/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans"],
+    "docs/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1", "crontab"],
+    "docs/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans", "make backup", "make restore"],
     "docs/pilot-checklist.md": ["LITELLM_PORT", "http://<ip-vm>:<LITELLM_PORT>/v1"],
+    "docs/devops-handoff.md": ["/metrics", "Authorization: Bearer", "var/backups", "/health/liveliness", "26 jam"],
+    "docs/gate3-checklist.md": ["make test-failure", "make loadtest", "LITELLM_PORT=4100", "15 2 * * *", "T14"],
     "docs/onboarding.md": ["http://10.0.0.5:4000/v1"],
     "docs/opencode.example.json": ['"baseURL": "http://<ip-vm>:4000/v1"'],
 }
