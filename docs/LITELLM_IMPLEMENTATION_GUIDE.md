@@ -200,62 +200,14 @@ Streaming dilayani LiteLLM langsung, dengan `request_timeout: 600` di `config.ya
 
 ### 5.4 Provisioning team, member, dan key
 
-Buat team:
+Team, member, budget, dan izin alias ditulis di `entitlements/*.yaml`, lalu diterapkan dengan `make plan` dan `make apply`. Jangan memakai `curl` manual ke management API atau mengubahnya lewat Admin UI, karena perubahan itu ditimpa lagi oleh `make apply` berikutnya. Key diterbitkan dan diblokir dengan `gatewayctl` (`make ctl`).
 
-```bash
-curl -X POST http://<ip-vm>:4000/team/new \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "team_id": "it-developer",
-    "team_alias": "IT / Developer",
-    "models": ["company-fast", "company-coding", "company-reasoning"],
-    "max_budget": 500,
-    "budget_duration": "30d",
-    "rpm_limit": 600
-  }'
-```
+Langkah lengkapnya ada di `docs/setup-admin.md`:
 
-Tambahkan anggota dengan budget individu di dalam team:
+- Mendaftarkan team dan user pilot di VM: bagian B6.
+- Menambah pengguna, memberi key, melihat key dan pemakaian, memblokir key, offboarding, serta mengubah budget atau model: Bagian C.
 
-```bash
-curl -X POST http://<ip-vm>:4000/team/member_add \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "team_id": "it-developer",
-    "member": {"role": "user", "user_id": "budi@perusahaan.com"},
-    "max_budget_in_team": 100
-  }'
-```
-
-Buat virtual key individual:
-
-```bash
-curl -X POST http://<ip-vm>:4000/key/generate \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "budi@perusahaan.com",
-    "team_id": "it-developer",
-    "key_alias": "budi-opencode",
-    "models": ["company-fast", "company-coding", "company-reasoning"],
-    "rpm_limit": 60,
-    "budget_limits": [
-      {"budget_duration": "24h", "max_budget": 10},
-      {"budget_duration": "30d", "max_budget": 100}
-    ]
-  }'
-```
-
-Blokir key (offboarding atau kebocoran):
-
-```bash
-curl -X POST http://<ip-vm>:4000/key/block \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "sk-..."}'
-```
+Referensi perintah `gatewayctl` ada di `docs/operator-guide.md` bagian 4.
 
 ### 5.5 Contoh konfigurasi OpenCode
 
@@ -407,10 +359,12 @@ Governance:
 ### 8.1 Onboarding user
 
 1. Pastikan user ada di grup IdP yang benar.
-2. Tambahkan ke team (`/team/member_add`) dengan budget individu.
-3. Generate virtual key (`/key/generate`) dengan alias sesuai entitlement.
-4. Kirim key lewat kanal aman; user memasangnya sebagai environment variable dan memakai template OpenCode.
-5. Catat di audit administrasi.
+2. Tambahkan email user di `members` team yang tepat di `entitlements/pilot.yaml`, lalu `make plan ENV=vm` dan `make apply ENV=vm`. Budget dan limit key mengikuti `member_defaults` team, kecuali di-override per member.
+3. Terbitkan key: `make -s ctl ENV=vm ARGS='key issue --user <email> --label opencode'`. Key tampil sekali.
+4. Kirim key lewat kanal aman beserta `docs/onboarding.md`; user memasangnya sebagai environment variable dan memakai template OpenCode.
+5. Commit perubahan file entitlements. `make apply` dan `make ctl` mencatat setiap aksi di `var/audit.log`.
+
+Detail dan penanganan error ada di `docs/setup-admin.md` Bagian C.
 
 ### 8.2 Offboarding user
 
