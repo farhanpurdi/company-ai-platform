@@ -1,6 +1,6 @@
 #!/bin/sh
 # Failure tests against the LOCAL stack: T12 (Redis down), T13 (Postgres down),
-# and, once added, T15 (restore). They stop Redis/Postgres for a while, so the
+# and T15 (backup, restore). They stop Redis/Postgres for a while, so the
 # script refuses any profile but local. A trap starts everything again on exit,
 # failure or Ctrl+C, so a failed run never leaves the stack half dead.
 # Keys are handed to pytest through the environment (-e NAME without a value),
@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 ENV_NAME="${1:-}"
 [ "$#" -eq 0 ] || shift
-ALL_SCENARIOS="t12 t13"
+ALL_SCENARIOS="t12 t13 t15"
 
 fail() {
 	echo "failure-tests gagal: $*" >&2
@@ -92,6 +92,23 @@ t13() {
 	phase "$f::test_t13_postgres_down" T13_FRESH_KEY T13_WARM_KEY
 	compose up -d --wait postgres
 	phase "$f::test_t13_recovered" T13_FRESH_KEY T13_WARM_KEY
+}
+
+# T15: backup, then change state (a new key and its spend), restore, and check that
+# the state is the one in the dump. The dump stays in var/backups/ and is removed by
+# the normal retention.
+t15() {
+	T15_OLD_KEY="$(issue dev1@local.test t15-old)"
+	T15_BUDGET_KEY="$(issue budget1@local.test t15-budget)"
+	export T15_OLD_KEY T15_BUDGET_KEY
+	f=test_t15_restore.py
+	phase "$f::test_t15_prepare" T15_OLD_KEY T15_BUDGET_KEY
+	dump="$(scripts/backup.sh "$ENV_NAME")"
+	T15_NEW_KEY="$(issue dev1@local.test t15-new)"
+	export T15_NEW_KEY
+	phase "$f::test_t15_mutate" T15_NEW_KEY
+	CONFIRM=1 scripts/restore.sh "$ENV_NAME" "$dump"
+	phase "$f::test_t15_verify" T15_OLD_KEY T15_NEW_KEY T15_BUDGET_KEY
 }
 
 for s in $SCENARIOS; do

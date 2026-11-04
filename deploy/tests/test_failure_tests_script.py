@@ -41,6 +41,13 @@ def repo(tmp_path):
     docker.write_text(STUB_DOCKER)
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
     (stub / "calls").write_text("")
+    # backup.sh and restore.sh are tested on their own; here they only log the call.
+    backup = tmp_path / "scripts" / "backup.sh"
+    backup.write_text('#!/bin/sh\necho "scripts/backup.sh $*" >>"$STUB_DIR/calls"\necho var/backups/litellm-fake.dump\n')
+    restore = tmp_path / "scripts" / "restore.sh"
+    restore.write_text('#!/bin/sh\necho "CONFIRM=${CONFIRM:-} scripts/restore.sh $*" >>"$STUB_DIR/calls"\n')
+    for script in (backup, restore):
+        script.chmod(script.stat().st_mode | stat.S_IXUSR)
     return tmp_path
 
 
@@ -142,3 +149,39 @@ def test_keys_not_in_argv(repo):
     assert not any(FAKE_KEY in c for c in calls)
     assert any("-e T12_RPM_KEY" in c and "-e T12_BUDGET_KEY" in c for c in calls)
     assert any("-e T13_FRESH_KEY" in c and "-e T13_WARM_KEY" in c for c in calls)
+
+
+def test_t15_sequence(repo):
+    r = _run(repo, "local", "t15")
+    assert r.returncode == 0, r.stderr
+    _assert_subsequence(
+        _calls(repo),
+        [
+            ("apply", lambda c: "apply --confirm" in c),
+            ("issue old", lambda c: "key issue" in c),
+            ("issue budget", lambda c: "key issue" in c),
+            ("prepare", lambda c: "::test_t15_prepare" in c),
+            ("backup", lambda c: c == "scripts/backup.sh local"),
+            ("issue new", lambda c: "key issue" in c),
+            ("mutate", lambda c: "::test_t15_mutate" in c),
+            ("restore", lambda c: c == "CONFIRM=1 scripts/restore.sh local var/backups/litellm-fake.dump"),
+            ("verify", lambda c: "::test_t15_verify" in c),
+        ],
+    )
+
+
+def test_t15_keys_not_in_argv(repo):
+    r = _run(repo, "local", "t15")
+    assert r.returncode == 0, r.stderr
+    calls = _calls(repo)
+    assert not any(FAKE_KEY in c for c in calls)
+    verify = next(c for c in calls if "::test_t15_verify" in c)
+    assert all(f"-e {v}" in verify for v in ("T15_OLD_KEY", "T15_NEW_KEY", "T15_BUDGET_KEY"))
+
+
+def test_restore_failure_still_restarts_stack(repo):
+    (repo / "scripts" / "restore.sh").write_text("#!/bin/sh\nexit 1\n")
+    r = _run(repo, "local", "t15")
+    assert r.returncode == 1
+    assert _calls(repo)[-1].endswith(RESTART_ALL)
+    assert not any("::test_t15_verify" in c for c in _calls(repo))
