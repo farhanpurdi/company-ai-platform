@@ -34,7 +34,8 @@ Target: LiteLLM proxy dipakai seluruh tim dalam **±7 minggu**, melalui 4 fase d
 | Provider | **OpenAI API** (billing platform). Bukan langganan ChatGPT Plus/Pro/Team. |
 | Model | `gpt-5.6-terra` (default harian), `gpt-5.6-sol` (tugas berat). ID lengkap dipin, bukan alias `gpt-5.6`. |
 | Client utama | OpenCode, lalu IDE/CLI lain, Open WebUI, dan aplikasi internal |
-| Deploy | Pilot: Docker Compose di 1 VM. Produksi: Kubernetes + Helm, minimal 2 replika |
+| Deploy | Docker Compose di VM, untuk pilot maupun produksi. Minimal 2 replika LiteLLM. Tanpa Kubernetes |
+| Akses jaringan | HTTP langsung ke VM di jaringan internal. TLS/HTTPS dan pengamanan tepi jaringan di ranah DevOps, bukan repo ini |
 | State | Managed PostgreSQL + managed Redis 7.0+ |
 | Autentikasi | Virtual key individual per user; service account key per aplikasi |
 | Administrasi | Admin UI bawaan + skrip provisioning. Portal custom hanya bila alur perusahaan menuntut |
@@ -43,7 +44,7 @@ Target: LiteLLM proxy dipakai seluruh tim dalam **±7 minggu**, melalui 4 fase d
 | Kegagalan dependency | **Fail-closed**: jika key/budget tidak bisa diperiksa, request ditolak |
 | Lisensi | Open source. Evaluasi Enterprise bila butuh SSO/SCIM/audit log bawaan |
 
-Di luar lingkup rilis awal: provider lain (Azure OpenAI, Gemini, DeepSeek, GLM), GPT-5.6 Luna, model lokal, portal custom, guardrail/PII masking otomatis, SCIM.
+Di luar lingkup rilis awal: Kubernetes, TLS/HTTPS (ranah DevOps), provider lain (Azure OpenAI, Gemini, DeepSeek, GLM), GPT-5.6 Luna, model lokal, portal custom, guardrail/PII masking otomatis, SCIM.
 
 ---
 
@@ -52,8 +53,7 @@ Di luar lingkup rilis awal: provider lain (Azure OpenAI, Gemini, DeepSeek, GLM),
 ```mermaid
 flowchart TD
     U["User internal"] --> C["OpenCode / IDE / CLI / aplikasi"]
-    C -->|"HTTPS + virtual key"| G["Ingress: TLS, IP allowlist"]
-    G --> L["LiteLLM Proxy (min. 2 replika di produksi)"]
+    C -->|"HTTP + virtual key (jaringan internal)"| L["LiteLLM Proxy di VM (Docker Compose, min. 2 replika)"]
     L -->|"Inference"| O["OpenAI API: gpt-5.6-terra, gpt-5.6-sol"]
     L -->|"Key, team, budget, spend"| DB[("PostgreSQL")]
     L -->|"Counter dan rate limit"| R[("Redis")]
@@ -123,11 +123,11 @@ Angka berikut ilustrasi; sesuaikan setelah 2 minggu pemakaian.
 | --- | --- | --- |
 | `LITELLM_MASTER_KEY` | Admin key proxy | Diawali `sk-`; hanya di secret manager |
 | `LITELLM_SALT_KEY` | Enkripsi kredensial di DB | **Jangan pernah diganti** setelah ada data; backup terpisah |
-| `DATABASE_URL` | Koneksi Postgres | Gunakan TLS ke DB |
+| `DATABASE_URL` | Koneksi Postgres | Postgres tidak dibuka ke jaringan kantor |
 | `OPENAI_API_KEY` | API key OpenAI Project khusus gateway | Rotasi tiap 90 hari |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Shared state | Jangan pakai `redis_url` |
 | `LITELLM_MODE` | `PRODUCTION` | Menonaktifkan auto-load `.env` |
-| `DISABLE_SCHEMA_UPDATE` | `true` di pod produksi | Migrasi lewat Job terpisah |
+| `DISABLE_SCHEMA_UPDATE` | `true` di semua replika kecuali `litellm-a` | Migrasi skema hanya dijalankan `litellm-a` saat start |
 
 ### 5.2 `config.yaml`
 
@@ -170,7 +170,7 @@ services:
     image: ghcr.io/berriai/litellm:<versi-stable>@sha256:<digest>  # min. v1.93.0-stable
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
-      - "127.0.0.1:4000:4000"   # hanya diakses lewat reverse proxy HTTPS
+      - "4000:4000"   # HTTP langsung dari jaringan internal
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     env_file: .env.litellm      # pilot saja; produksi memakai secret manager
@@ -196,14 +196,14 @@ volumes:
   pgdata:
 ```
 
-Reverse proxy di depan LiteLLM wajib mendukung streaming: matikan response buffering (misalnya `proxy_buffering off` di Nginx) dan set read timeout panjang (mis. 600 detik) untuk agent yang berjalan lama.
+Streaming dilayani LiteLLM langsung, dengan `request_timeout: 600` di `config.yaml` untuk agent yang berjalan lama. Bila DevOps memasang proxy di depan VM, sampaikan bahwa proxy itu harus tanpa response buffering dan memakai read timeout minimal 600 detik.
 
 ### 5.4 Provisioning team, member, dan key
 
 Buat team:
 
 ```bash
-curl -X POST https://llm.perusahaan.internal/team/new \
+curl -X POST http://<ip-vm>:4000/team/new \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -219,7 +219,7 @@ curl -X POST https://llm.perusahaan.internal/team/new \
 Tambahkan anggota dengan budget individu di dalam team:
 
 ```bash
-curl -X POST https://llm.perusahaan.internal/team/member_add \
+curl -X POST http://<ip-vm>:4000/team/member_add \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -232,7 +232,7 @@ curl -X POST https://llm.perusahaan.internal/team/member_add \
 Buat virtual key individual:
 
 ```bash
-curl -X POST https://llm.perusahaan.internal/key/generate \
+curl -X POST http://<ip-vm>:4000/key/generate \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -251,7 +251,7 @@ curl -X POST https://llm.perusahaan.internal/key/generate \
 Blokir key (offboarding atau kebocoran):
 
 ```bash
-curl -X POST https://llm.perusahaan.internal/key/block \
+curl -X POST http://<ip-vm>:4000/key/block \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d '{"key": "sk-..."}'
@@ -269,7 +269,7 @@ Simpan virtual key di environment variable user, jangan di file yang di-commit.
       "npm": "@ai-sdk/openai-compatible",
       "name": "Company LLM Gateway",
       "options": {
-        "baseURL": "https://llm.perusahaan.internal/v1",
+        "baseURL": "http://<ip-vm>:4000/v1",
         "apiKey": "{env:COMPANY_LLM_KEY}"
       },
       "models": {
@@ -313,14 +313,14 @@ Jika gate gagal, fase diperpanjang, bukan dilewati.
 - [ ] Tetapkan kebijakan data: kelas data apa yang boleh dikirim ke OpenAI
 - [ ] Tetapkan toleransi overshoot budget dan target waktu pencabutan key (mis. maks. 5 menit)
 - [ ] Generate `LITELLM_MASTER_KEY` dan `LITELLM_SALT_KEY`, simpan di secret manager
-- [ ] Siapkan domain internal (mis. `llm.perusahaan.internal`) dan sertifikat TLS
+- [ ] Siapkan VM di jaringan internal dengan Docker, IP tetap, dan port gateway (default 4000)
 - [ ] Pilih versi LiteLLM (min. v1.93.0-stable) dan pin ke image digest
 
 ### Fase 1 — Pilot (minggu 2–3)
 
 Setup:
 
-- [ ] Deploy Docker Compose (bagian 5.3) di belakang reverse proxy HTTPS
+- [ ] Deploy Docker Compose (bagian 5.3) di VM; pengguna terhubung lewat HTTP ke `http://<ip-vm>:4000`
 - [ ] Terapkan `config.yaml` (bagian 5.2) dengan 3 alias
 - [ ] Response caching mati; Redis hanya untuk counter dan rate limit
 - [ ] `LITELLM_MODE=PRODUCTION` sejak awal
@@ -338,17 +338,16 @@ Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualit
 Infrastruktur:
 
 - [ ] Managed Postgres (backup harian, point-in-time recovery) dan managed Redis 7.0+
-- [ ] Deploy via Helm chart resmi dengan `db.useExisting: true`, minimal 2 replika
-- [ ] HPA dengan `maxReplicas` realistis; hitung koneksi DB = replika × worker × pool size
+- [ ] Deploy dengan Docker Compose di VM produksi, minimal 2 replika LiteLLM (pola `litellm-a`/`litellm-b` dari pilot)
+- [ ] Hitung koneksi DB = replika × worker × pool size sebelum menambah replika
 - [ ] PgBouncer bila total koneksi mendekati batas Postgres
-- [ ] Ingress dengan TLS, IP allowlist/WAF, dukungan streaming dan timeout panjang
-- [ ] Liveness dan readiness probe ke endpoint health LiteLLM
-- [ ] Network policy: outbound hanya ke endpoint OpenAI yang diperlukan
+- [ ] Healthcheck dan `restart: unless-stopped` di setiap container
+- [ ] TLS dan load balancing ke kedua replika disediakan DevOps di depan VM
 
 Database dan migrasi:
 
-- [ ] `DISABLE_SCHEMA_UPDATE=true` di pod LiteLLM
-- [ ] Migrasi sebagai Kubernetes Job sebelum setiap upgrade
+- [ ] `DISABLE_SCHEMA_UPDATE=true` di semua replika kecuali `litellm-a`
+- [ ] Migrasi skema hanya dijalankan `litellm-a` saat start; saat upgrade, `litellm-a` naik dulu, baru replika lain
 - [ ] Migrasikan atau buat ulang team, user, dan key dari pilot
 
 Observability dan audit:
@@ -397,7 +396,7 @@ Governance:
 | T11 | Rekonsiliasi spend | Bandingkan `/team/info` dengan usage OpenAI Project | Selisih < 5% | G2 |
 | T12 | Redis down | Matikan Redis sementara | Limit/budget tidak diam-diam terlewati; perilaku terdokumentasi | G3 |
 | T13 | Postgres down | Matikan Postgres sementara | Request baru ditolak (fail-closed) | G3 |
-| T14 | Replika mati | Matikan 1 pod | Trafik tetap jalan | G3 |
+| T14 | Replika mati | Matikan 1 container replika LiteLLM | Trafik tetap jalan lewat replika lain | G3 |
 | T15 | Restore | Restore backup Postgres ke staging | Key, team, dan spend kembali utuh | G3 |
 | T16 | Load test | Beban puncak perkiraan | Latency p95 sesuai target, tetap di bawah rate limit organisasi OpenAI | G3 |
 
@@ -434,15 +433,15 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 
 1. Buat key baru di OpenAI Project.
 2. Perbarui secret manager.
-3. Rolling restart pod LiteLLM; pastikan request berhasil.
+3. Buat ulang container LiteLLM satu per satu (bukan `docker compose restart`, karena env baru hanya terbaca saat container dibuat ulang); pastikan request berhasil.
 4. Cabut key lama di OpenAI.
 
 ### 8.5 Upgrade LiteLLM
 
 1. Baca release notes; pin versi dan digest baru.
 2. Backup Postgres.
-3. Deploy ke staging, jalankan migration Job, jalankan T01–T09.
-4. Produksi: migration Job, lalu rolling update.
+3. Deploy ke VM staging (migrasi berjalan di `litellm-a` saat start), jalankan T01–T09.
+4. Produksi: perbarui `litellm-a` dulu sampai sehat, lalu replika lain satu per satu.
 5. Rollback: image lama + backup yang kompatibel.
 
 ### 8.6 Ganti mapping alias
@@ -463,7 +462,8 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 | Budget overshoot pada request paralel | Biaya melewati batas | Toleransi tertulis, uji T03, `max_parallel_requests` per key bila perlu, budget di OpenAI Project |
 | Fallback melanggar entitlement | User mendapat model yang tidak diizinkan | Fallback hanya ke alias yang juga diizinkan untuk key tersebut |
 | Redis atau Postgres down | Limit tidak konsisten atau request lolos tanpa pemeriksaan | Fail-closed; Redis wajib sebelum replika kedua; managed HA; uji T12–T15 |
-| Koneksi DB habis saat autoscale | Error massal | Batasi `maxReplicas`, PgBouncer, pantau koneksi |
+| Koneksi DB habis saat replika ditambah | Error massal | Hitung koneksi sebelum menambah replika, PgBouncer, pantau koneksi |
+| Key lewat HTTP sampai DevOps memasang TLS | Virtual key atau master key bisa disadap di jaringan | Gateway hanya di jaringan internal; blokir dan ganti key yang dicurigai bocor |
 | Key tidak dicabut saat karyawan keluar | Akses tetap aktif | Runbook 8.2, rekonsiliasi mingguan |
 | Prompt/output tersimpan di log | Kebocoran data | Metadata saja; prompt hanya dengan persetujuan, redaction, retensi |
 | Master key atau salt key bocor/hilang | Akses penuh / kredensial tak bisa didekripsi | Secret manager, akses terbatas, rotasi, backup salt key |
@@ -476,7 +476,7 @@ Menonaktifkan akun SSO **tidak** mencabut virtual key.
 ## 10. Pertanyaan terbuka
 
 - [ ] Jumlah pengguna dan team, serta berapa yang butuh akses Sol?
-- [ ] Infra produksi: Kubernetes yang sudah ada, VM, atau cloud tertentu?
+- [ ] Kapan DevOps menyediakan TLS dan load balancing di depan VM?
 - [ ] Generasi model: GPT-5.6 Terra/Sol, atau Sol generasi lebih baru yang sudah dirilis OpenAI?
 - [ ] Usage tier organisasi OpenAI saat ini dan apakah rate limit-nya cukup?
 - [ ] Identity Provider yang dipakai untuk SSO dan offboarding?
