@@ -42,6 +42,13 @@ def test_backup_target_is_silent_and_calls_script():
         assert line.startswith("@"), f"backup: make would echo {line!r} to stdout"
 
 
+def test_restore_target_passes_confirm_and_backup():
+    recipe = " ".join(_recipe("restore"))
+    assert 'CONFIRM="$(CONFIRM)"' in recipe
+    assert "scripts/restore.sh $(ENV)" in recipe
+    assert '"$(BACKUP)"' in recipe
+
+
 def test_smoke_target_passes_smoke_key_to_tools():
     recipe = " ".join(_recipe("smoke"))
     assert "-e SMOKE_KEY" in recipe
