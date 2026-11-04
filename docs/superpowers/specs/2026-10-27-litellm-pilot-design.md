@@ -125,10 +125,10 @@ Inference dan admin memakai satu alamat, yaitu `litellm-a`: `http://<host>:<LITE
 Tambahan terhadap `config.yaml` di panduan bagian 5.2:
 
 - **`api_base: os.environ/OPENAI_API_BASE`** pada setiap deployment. Lokal mengarah ke `http://mock-upstream:8080/v1`, VM ke `https://api.openai.com/v1`.
-- **Harga dipin di `model_info`** (`input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`). Keputusan pemilik repo 2026-10-30 menggantikan harga awal Terra $2.50/$15 dan Sol $5/$30, yang tidak lagi sesuai dengan tagihan OpenAI:
-  - Per 1M token, tier Standard, input / input cache / output: Terra $2 / $0.20 / $12 dan Sol $4 / $0.40 / $20, sesuai halaman harga OpenAI pada 2026-10-30. Harga Sol adalah promo sampai setidaknya 2026-11-21 dan dicek ulang pada tanggal itu.
+- **Harga dipin di `model_info`** (`input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`, `cache_creation_input_token_cost`). Keputusan pemilik repo 2026-10-30 menggantikan harga awal Terra $2.50/$15 dan Sol $5/$30, yang tidak lagi sesuai dengan tagihan OpenAI. Harga cache write ikut dipin sejak 2026-11-03 (PR #14); sebelumnya diambil dari cost map di image:
+  - Per 1M token, tier Standard, input / input cache / cache write (30m) / output: Terra $2 / $0.20 / $2.50 / $12 dan Sol $4 / $0.40 / $5 / $20, sesuai halaman harga OpenAI pada 2026-10-30 (cache write dicek 2026-11-03). Harga Sol adalah promo sampai setidaknya 2026-11-21 dan dicek ulang pada tanggal itu.
   - `LITELLM_LOCAL_MODEL_COST_MAP=True`: LiteLLM tidak mengunduh cost map dari GitHub saat start, sehingga langkah reload cost map tidak ada di checklist. Nilai yang tidak dipin, yaitu tarif konteks di atas 272K token dan `max_output_tokens`, berasal dari cost map di image yang dipin digest dan hanya berubah saat image di-upgrade.
-  - Uji acceptance memastikan spend satu request dengan input cache, baik JSON maupun stream, sama dengan harga di `config.yaml`. Uji T02 dan T03 membaca harga dari file yang sama.
+  - Uji acceptance memastikan spend satu request dengan cache read dan cache write, baik JSON maupun stream, sama dengan harga di `config.yaml`. Uji T02 dan T03 membaca harga dari file yang sama.
   - Prosedur perubahan harga ada di `docs/operator-guide.md`, "Mengubah harga model".
 - **Retry dan fallback:** `num_retries: 2` dengan backoff, `fallbacks: [{"company-reasoning": ["company-coding"]}]`, `request_timeout: 600`.
 - **Privasi log:** `turn_off_message_logging: true`, prompt tidak disimpan di spend log, `LITELLM_LOG=INFO`, `json_logs: true`.
