@@ -38,6 +38,18 @@ ALLOW_BASH = [
     "docker compose --env-file deploy/env/local.env run --rm -T tools pytest -q | grep passed",
     # Naming the setting in a commit message does not set it.
     "git commit -m 'deny LITELLM_LOG=DEBUG and fail-open settings'",
+    # Fase 2: local restore, failure tests and backups are allowed.
+    "make restore BACKUP=var/backups/x.dump CONFIRM=1",
+    "make test-failure",
+    "make loadtest",
+    "make backup ENV=vm",
+]
+ASK_BASH = [
+    "make restore ENV=vm BACKUP=var/backups/x.dump CONFIRM=1",
+    "make ENV=vm restore BACKUP=var/backups/x.dump CONFIRM=1",
+    "make -C . ENV=vm restore",
+    "make restore BACKUP=x.dump ENV=vm",
+    "CONFIRM=1 scripts/restore.sh vm var/backups/x.dump",
 ]
 
 
@@ -62,6 +74,13 @@ def test_bash_guard_denies(cmd):
 def test_bash_guard_allows(cmd):
     r = _run("guard-bash.sh", {"command": cmd})
     assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+
+
+@pytest.mark.parametrize("cmd", ASK_BASH)
+def test_restore_on_vm_asks_owner(cmd):
+    r = _run("guard-bash.sh", {"command": cmd})
+    assert r.returncode == 0
+    assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
 def test_git_push_asks_owner():

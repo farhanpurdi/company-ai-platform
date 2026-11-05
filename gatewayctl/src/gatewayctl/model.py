@@ -40,6 +40,8 @@ class MemberSpec:
     team_id: str
     max_budget_in_team: float | None
     kind: Literal["user", "service_account"] = "user"
+    # LiteLLM user role applied when a key is issued; only service accounts set it.
+    role: Literal["proxy_admin_viewer"] | None = None
 
 
 @dataclass(frozen=True)

@@ -47,9 +47,28 @@ teams:
       - user_id: rate1@local.test
         key: { rpm_limit: 3 }
 
+  # T16 load test: limits high enough that only gateway capacity is measured.
+  qa-load:
+    alias: "QA Load (uji)"
+    models: [company-coding]
+    budget: { max_usd: 10000, duration: 30d }
+    rpm_limit: 6000
+    members:
+      - user_id: load1@local.test
+        key: { rpm_limit: 6000, budgets: [{ duration: 30d, max_usd: 1000 }] }
+
 service_accounts:
   svc-test:
     team: it-developer
     models: [company-fast]
     rpm_limit: 120
     budgets: [{ duration: 30d, max_usd: 5 }]
+  # Scraper for DevOps Prometheus. LiteLLM only lets a proxy admin read /metrics, so the
+  # account is a read-only admin (proxy_admin_viewer, set by `key issue`): it cannot call
+  # models or write, and the $0 budget blocks inference on top of that.
+  prometheus:
+    team: it-developer
+    models: [company-fast]
+    rpm_limit: 10
+    budgets: [{ duration: 30d, max_usd: 0 }]
+    role: proxy_admin_viewer

@@ -336,6 +336,8 @@ class _ServiceAccount(_Strict):
     models: Aliases | None = None
     rpm_limit: Rpm | None = None
     budgets: Budgets = Field(default_factory=list)
+    # Read-only admin: may read /metrics and other GET routes, never inference or writes.
+    role: Literal["proxy_admin_viewer"] | None = None
 
 
 class _File(_Strict):
@@ -465,7 +467,9 @@ def _resolve(doc: _File, gateway: GatewayConfig) -> DesiredState:
         team_models = teams[account.team].models
         _check_subset(account.models, team_models, f"{path}.models", account.team)
         _check_budgets(account.budgets, f"{path}.budgets")
-        members[account_id] = MemberSpec(account_id, account.team, None, "service_account")
+        members[account_id] = MemberSpec(
+            account_id, account.team, None, "service_account", account.role
+        )
         policies[account_id] = _policy(
             account.models, account.rpm_limit, account.budgets, team_models
         )

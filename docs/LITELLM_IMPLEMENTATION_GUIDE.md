@@ -36,7 +36,7 @@ Target: LiteLLM proxy dipakai seluruh tim dalam **±7 minggu**, melalui 4 fase d
 | Client utama | OpenCode, lalu IDE/CLI lain, Open WebUI, dan aplikasi internal |
 | Deploy | Docker Compose di VM, untuk pilot maupun produksi. Minimal 2 replika LiteLLM. Tanpa Kubernetes |
 | Akses jaringan | HTTP langsung ke VM di jaringan internal. TLS/HTTPS dan pengamanan tepi jaringan di ranah DevOps, bukan repo ini |
-| State | Managed PostgreSQL + managed Redis 7.0+ |
+| State | Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2) |
 | Autentikasi | Virtual key individual per user; service account key per aplikasi |
 | Administrasi | Admin UI bawaan + skrip provisioning. Portal custom hanya bila alur perusahaan menuntut |
 | Caching | Response caching **mati** |
@@ -289,7 +289,7 @@ Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualit
 
 Infrastruktur:
 
-- [ ] Managed Postgres (backup harian, point-in-time recovery) dan managed Redis 7.0+
+- [ ] Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2)
 - [ ] Deploy dengan Docker Compose di VM produksi, minimal 2 replika LiteLLM (pola `litellm-a`/`litellm-b` dari pilot)
 - [ ] Hitung koneksi DB = replika × worker × pool size sebelum menambah replika
 - [ ] PgBouncer bila total koneksi mendekati batas Postgres

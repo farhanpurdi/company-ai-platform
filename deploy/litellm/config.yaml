@@ -53,6 +53,11 @@ litellm_settings:
   turn_off_message_logging: true
   json_logs: true
   cache: false
+  # Metrics for the DevOps Prometheus (spec Fase 2 section 5). /metrics keeps
+  # authentication (require_auth_for_metrics_endpoint is NOT set to false): the
+  # scraper uses the zero-budget `prometheus` service account key.
+  callbacks: ["prometheus"]
+  service_callback: ["prometheus_system"]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

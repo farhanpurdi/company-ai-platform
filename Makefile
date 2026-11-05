@@ -21,7 +21,7 @@ export HOST_GID := $(shell id -g)
 # -T keeps stdout (raw key from `key issue`) separate from stderr (everything else).
 CTL = $(COMPOSE) run --rm -T -e GATEWAYCTL_OPERATOR="$(OPERATOR)" -e GATEWAYCTL_GIT_SHA="$(GIT_SHA)" tools gatewayctl --file $(FILE)
 
-.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks
+.PHONY: tools-build unit init-local up down ps logs config plan apply ctl test smoke hooks backup restore test-failure loadtest
 
 # Enable the versioned pre-commit hook in .githooks (secret, path, syntax and unit checks).
 hooks:
@@ -73,6 +73,26 @@ apply:
 # make ctl ARGS='key issue --user U --label L' (also key block/list)
 ctl:
 	@$(CTL) $(ARGS)
+
+# Verified pg_dump into var/backups/. Silent (@): stdout is only the dump path,
+# so `path=$(make -s backup)` works. Retention: BACKUP_KEEP_DAYS (default 7).
+backup:
+	@scripts/backup.sh $(ENV)
+
+# Replaces the database with a dump: make restore BACKUP=var/backups/<file>.dump CONFIRM=1
+# Without CONFIRM=1 it only prints the plan. Never on ENV=vm without the repo owner.
+restore:
+	CONFIRM="$(CONFIRM)" scripts/restore.sh $(ENV) "$(BACKUP)"
+
+# T12 (Redis down), T13 (Postgres down) and T15 (restore) on the LOCAL stack only: they
+# stop Redis/Postgres for a while. make test-failure [ARGS='t12 t13']
+test-failure:
+	scripts/failure-tests.sh $(ENV) $(ARGS)
+
+# T16: first-token overhead at 25 and 50 parallel streams (mock upstream). Run
+# `make apply` first so the qa-load team exists. Not together with make test.
+loadtest:
+	$(COMPOSE) run --rm -T tools pytest -p no:cacheprovider tests/load -v
 
 # Unit, then integration and acceptance against the local stack (make up),
 # then the T10 log scan on the host.

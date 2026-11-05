@@ -1,8 +1,10 @@
 #!/bin/sh
 # T10 (spec 8.2): search every gateway container log and the LiteLLM_SpendLogs
 # table for the sentinel values written by tests/acceptance/test_log_hygiene.py
-# plus LITELLM_MASTER_KEY and OPENAI_API_KEY from the env file. mock-upstream is
-# excluded: it receives prompts by design. Prints only source names, never values.
+# plus LITELLM_MASTER_KEY and OPENAI_API_KEY from the env file. The /metrics output
+# of both replicas is scanned too (Prometheus labels must not carry them).
+# mock-upstream is excluded: it receives prompts by design. Prints only source
+# names, never values.
 # Before grepping it checks that the T10 traffic actually reached the spend log,
 # so a clean result is not just an empty source.
 # Usage: scripts/t10-scan-logs.sh ENV   (local | vm)
@@ -14,6 +16,7 @@ ENV_NAME="${1:-local}"
 ENV_FILE="deploy/env/$ENV_NAME.env"
 SENTINELS="var/t10-sentinels.txt"
 SERVICES="litellm-a litellm-b postgres redis"
+METRICS_SERVICES="litellm-a litellm-b"
 T10_REQUESTS=2
 SPEND_WAIT_S="${T10_SPEND_WAIT_S:-60}"
 
@@ -86,8 +89,21 @@ if grep -qF -f "$work/patterns" "$work/spendlogs"; then
 	found="$found postgres:LiteLLM_SpendLogs"
 fi
 
+# The master key is read from the container's own env, never through the host argv.
+# /metrics/ (with slash) avoids LiteLLM's redirect from /metrics.
+metrics_sources=""
+for svc in $METRICS_SERVICES; do
+	compose exec -T "$svc" python -c "import os,urllib.request as u;print(u.urlopen(u.Request('http://localhost:4000/metrics/',headers={'Authorization':'Bearer '+os.environ['LITELLM_MASTER_KEY']})).read().decode())" \
+		>"$work/metrics" 2>/dev/null || fail "$svc:/metrics tidak dapat dibaca"
+	[ -s "$work/metrics" ] || fail "$svc:/metrics kosong"
+	metrics_sources="$metrics_sources $svc:/metrics"
+	if grep -qF -f "$work/patterns" "$work/metrics"; then
+		found="$found $svc:/metrics"
+	fi
+done
+
 if [ -n "$found" ]; then
 	echo "T10 GAGAL: nilai penanda atau rahasia ditemukan di:$found" >&2
 	exit 1
 fi
-echo "T10 clean ($(wc -l <"$work/patterns" | tr -d ' ') nilai, sumber: $SERVICES postgres:LiteLLM_SpendLogs)"
+echo "T10 clean ($(wc -l <"$work/patterns" | tr -d ' ') nilai, sumber: $SERVICES postgres:LiteLLM_SpendLogs$metrics_sources)"

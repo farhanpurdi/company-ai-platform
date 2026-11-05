@@ -34,3 +34,14 @@ teams:
     # Kosong (null) dihitung sebagai daftar kosong.
     members:
       # - nama.depan@perusahaan.com
+
+# Scraper untuk Prometheus DevOps. LiteLLM hanya mengizinkan proxy admin membaca /metrics,
+# jadi akun ini admin read-only (proxy_admin_viewer, diatur saat `key issue`): tidak bisa
+# memanggil model atau menulis, dan budget $0 ikut memblokir inferensi.
+service_accounts:
+  prometheus:
+    team: it-developer
+    models: [company-fast]
+    rpm_limit: 10
+    budgets: [{ duration: 30d, max_usd: 0 }]
+    role: proxy_admin_viewer

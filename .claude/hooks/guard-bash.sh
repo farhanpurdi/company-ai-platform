@@ -42,8 +42,13 @@ if has '("command" *: *"|[;&|(]|\\n) *(export +|env +)?([A-Za-z_][A-Za-z0-9_]*=[
 fi
 
 # Acceptance tests share mock, budget and rate-limit state.
-if has '(make[^|;&]* test([ "]|$)|pytest[^|;&]*tests/acceptance)' && pgrep -f 'tests/integration tests/acceptance' >/dev/null 2>&1; then
+if has '(make[^|;&]* (test|test-failure|loadtest)([ "]|$)|pytest[^|;&]*tests/(acceptance|failure|load))' && pgrep -f 'tests/integration tests/acceptance|failure-tests\.sh|tests/failure|tests/load' >/dev/null 2>&1; then
 	deny "uji acceptance lain masih berjalan; jangan menjalankan dua make test bersamaan (CLAUDE.md)"
+fi
+
+# A restore on the VM replaces the production database with the dump.
+if has '(make[^|;&]* restore[^|;&]*ENV=vm|make[^|;&]*ENV=vm[^|;&]* restore([ "]|$)|restore\.sh +vm([ "]|$))'; then
+	ask "make restore di VM mengganti isi database produksi; butuh izin pemilik repo (CLAUDE.md)"
 fi
 
 if has 'git( -C [^ ]+)? push([ "]|$)'; then

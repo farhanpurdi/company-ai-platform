@@ -162,6 +162,9 @@ class LiteLLMClient:
     def member_delete(self, team_id: str, user_id: str) -> None:
         self._request("POST", "/team/member_delete", json={"team_id": team_id, "user_id": user_id})
 
+    def user_update(self, user_id: str, user_role: str) -> None:
+        self._request("POST", "/user/update", json={"user_id": user_id, "user_role": user_role})
+
     def key_generate(self, payload: dict) -> dict:
         return self._json("POST", "/key/generate", json=payload)
 

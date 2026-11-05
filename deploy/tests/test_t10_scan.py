@@ -22,10 +22,16 @@ PROMPT = "SENTINEL-PROMPT-1b2c3d4e"
 VKEY = "sk-fakevirtualkey9876543"
 
 STUB_DOCKER = """#!/bin/sh
-for arg; do last="$arg"; done
+prev=""
+for arg; do
+  [ "$prev" = "-T" ] && svc="$arg"
+  prev="$arg"
+  last="$arg"
+done
 case "$*" in
   *psql*" -At "*) cat "$STUB_DIR/spendrows" ;;
   *psql*) cat "$STUB_DIR/spendlogs" ;;
+  *" exec -T litellm-"*) [ -f "$STUB_DIR/metrics_fail" ] && exit 1; cat "$STUB_DIR/metrics-$svc" ;;
   *" logs "*) cat "$STUB_DIR/logs-$last" 2>/dev/null || true ;;
   *) echo "stub docker: unexpected $*" >&2; exit 9 ;;
 esac
@@ -49,6 +55,8 @@ def repo(tmp_path):
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
     for svc in SERVICES:
         (stub / f"logs-{svc}").write_text(f'{svc}-1  | {{"level": "INFO", "message": "ok"}}\n')
+    for svc in ("litellm-a", "litellm-b"):
+        (stub / f"metrics-{svc}").write_text("litellm_proxy_total_requests_metric_total 2\n")
     (stub / "spendlogs").write_text("req-1\tcompany-fast\t0.01\n")
     (stub / "spendrows").write_text("2\n")
     return tmp_path
@@ -104,6 +112,24 @@ def test_leak_names_source_without_value(repo, source, value, name):
     _assert_no_values(result)
 
 
+def test_sentinel_in_metrics_fails(repo):
+    path = repo / "stub" / "metrics-litellm-b"
+    path.write_text(path.read_text() + f'litellm_x{{key="{VKEY}"}} 1\n')
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "litellm-b:/metrics" in result.stdout + result.stderr
+    assert "T10 clean" not in result.stdout
+    _assert_no_values(result)
+
+
+def test_unreadable_metrics_fail_instead_of_passing_clean(repo):
+    (repo / "stub" / "metrics_fail").write_text("")
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "/metrics" in result.stderr
+    assert "T10 clean" not in result.stdout
+
+
 def test_mock_upstream_logs_are_not_scanned(repo):
     (repo / "stub" / "logs-mock-upstream").write_text(f"prompt {PROMPT}\n")
     result = _run(repo)
@@ -137,7 +163,10 @@ def test_t10_traffic_missing_from_spend_log_fails(repo):
 def test_clean_result_names_sources(repo):
     result = _run(repo)
     assert result.returncode == 0, result.stderr
-    assert "sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs)" in result.stdout
+    assert (
+        "sumber: litellm-a litellm-b postgres redis postgres:LiteLLM_SpendLogs "
+        "litellm-a:/metrics litellm-b:/metrics)"
+    ) in result.stdout
 
 
 def test_caddy_logs_are_not_scanned(repo):

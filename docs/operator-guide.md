@@ -175,6 +175,34 @@ Langkahnya:
 
 Spend yang sudah tercatat tidak dihitung ulang; harga baru hanya berlaku untuk request berikutnya. Rekonsiliasi T11 yang melintasi waktu perubahan harga perlu snapshot baru setelah perubahan.
 
+### Backup dan restore
+
+`make backup` memakai `pg_dump` dari container `postgres`; hasilnya satu file per backup di `var/backups/` (folder izin 700, file izin 600, tidak pernah di-commit).
+
+```sh
+make -s backup                  # stdout hanya berisi path dump; ringkasan ke stderr
+make -s backup ENV=vm           # di VM; dipanggil juga oleh cron (docs/setup-admin.md B9)
+BACKUP_KEEP_DAYS=14 make -s backup   # retensi (bilangan bulat >= 1, default 7)
+```
+
+Dump diperiksa dengan `pg_restore --list` sebelum diberi nama akhir `litellm-<YYYYMMDDTHHMMSSZ>.dump` (UTC). Dump yang gagal dibuang, dan dump lama hanya dihapus setelah dump baru berhasil.
+
+```sh
+make restore BACKUP=var/backups/litellm-<waktu>.dump              # tanpa CONFIRM=1: hanya mencetak rencana, exit 1
+make restore BACKUP=var/backups/litellm-<waktu>.dump CONFIRM=1    # mengganti isi database
+```
+
+`make restore` mengganti seluruh isi database dengan isi dump: file diperiksa, `litellm-a` dan `litellm-b` dihentikan, `pg_restore` berjalan dalam satu transaksi (bila gagal, database lama utuh dan replika tetap mati; nyalakan lagi dengan `make up`), Redis dikosongkan, lalu replika dinyalakan. Restore hanya berhasil penuh bila `LITELLM_SALT_KEY` sama dengan saat backup dibuat. Di VM (`ENV=vm`), jalankan hanya atas permintaan pemilik repo.
+
+**Pemulihan VM rusak** (kehilangan data maksimal sejak backup terakhir, sekitar satu hari):
+
+1. Siapkan VM baru sesuai `docs/setup-admin.md` bagian B.
+2. Isi `deploy/env/vm.env` dengan secret yang sama, termasuk `LITELLM_SALT_KEY`.
+3. `make up ENV=vm`.
+4. Ambil dump terbaru dari penyimpanan DevOps ke `var/backups/`.
+5. `make restore ENV=vm BACKUP=var/backups/<file> CONFIRM=1`.
+6. `make plan ENV=vm` harus exit 0. Kirim satu request dengan key yang ada.
+
 ### Log, berhenti, dan menyalakan ulang
 
 ```sh
@@ -194,8 +222,12 @@ Jangan pernah memakai `docker compose down -v` atau menghapus volume `pgdata`, k
 | `make unit` | tidak | Unit test `gatewayctl`, mock upstream, dan konfigurasi deploy |
 | `make test` | stack lokal hidup, sudah `make apply` | Unit, integrasi, acceptance T01–T05 dan T08–T10, lalu pemindaian log T10 |
 | `make smoke ENV=vm` | stack VM | Smoke T06/T07 ke OpenAI asli (lihat checklist) |
+| `make test-failure` | stack lokal hidup | T12 (Redis mati), T13 (Postgres mati), T15 (backup lalu restore). Hanya `ENV=local`: Redis dan Postgres dimatikan sementara, dan stack dinyalakan lagi saat selesai atau gagal |
+| `make loadtest` | stack lokal hidup, sudah `make apply` | T16: selisih p95 waktu token pertama gateway dibanding langsung ke mock pada 25 dan 50 stream |
 
 `make test` menjalankan sekitar 25 uji acceptance yang memakai state bersama (budget, rate limit, mock). Jangan menjalankan dua `make test` bersamaan. Baris `T03 spend=...` dan `T05 revocation seconds=...` di output dicatat ke tabel Gate 2 di checklist.
+
+`make test`, `make test-failure`, dan `make loadtest` berbagi state stack lokal: jangan menjalankan dua di antaranya bersamaan. Baris `T12 ...`, `T13 ...`, `T15 restore ok`, dan `T16 concurrency=...` dicatat ke tabel di `docs/gate3-checklist.md`. Angka resmi T16 diambil di VM (checklist bagian 4); angka di laptop hanya untuk pengembangan.
 
 ## 6. Persiapan VM sebelum T06, T07, dan T11
 

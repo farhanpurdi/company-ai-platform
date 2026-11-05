@@ -132,6 +132,13 @@ def test_key_block_payload(router, client):
     assert httpx.Response(200, content=route.calls[0].request.read()).json() == {"key": "hashed-token"}
 
 
+def test_user_update_role_payload(router, client):
+    route = router.post("/user/update").mock(return_value=httpx.Response(200, json={}))
+    client.user_update("prometheus", "proxy_admin_viewer")
+    body = httpx.Response(200, content=route.calls[0].request.read()).json()
+    assert body == {"user_id": "prometheus", "user_role": "proxy_admin_viewer"}
+
+
 def test_key_generate_returns_key_and_token(router, client):
     router.post("/key/generate").mock(
         return_value=httpx.Response(200, json={"key": "sk-rawrawraw1", "token": "hashed"})
