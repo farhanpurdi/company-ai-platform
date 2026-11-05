@@ -47,7 +47,7 @@ if has '(make[^|;&]* (test|test-failure|loadtest)([ "]|$)|pytest[^|;&]*tests/(ac
 fi
 
 # A restore on the VM replaces the production database with the dump.
-if has '(make[^|;&]* restore[^|;&]*ENV=vm|restore\.sh +vm([ "]|$))'; then
+if has '(make[^|;&]* restore[^|;&]*ENV=vm|make[^|;&]*ENV=vm[^|;&]* restore([ "]|$)|restore\.sh +vm([ "]|$))'; then
 	ask "make restore di VM mengganti isi database produksi; butuh izin pemilik repo (CLAUDE.md)"
 fi
 

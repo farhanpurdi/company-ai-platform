@@ -46,6 +46,9 @@ ALLOW_BASH = [
 ]
 ASK_BASH = [
     "make restore ENV=vm BACKUP=var/backups/x.dump CONFIRM=1",
+    "make ENV=vm restore BACKUP=var/backups/x.dump CONFIRM=1",
+    "make -C . ENV=vm restore",
+    "make restore BACKUP=x.dump ENV=vm",
     "CONFIRM=1 scripts/restore.sh vm var/backups/x.dump",
 ]
 

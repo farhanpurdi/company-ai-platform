@@ -25,14 +25,14 @@ Jangan menjalankan `make down -v`, `docker compose down -v`, atau menghapus volu
 
 ## 2. Backup
 
-1. Pasang crontab sekali (`docs/setup-admin.md` B9), dengan `PATH`:
+1. Jalankan sekali manual: `make -s backup ENV=vm`. Harapan: satu path `var/backups/litellm-<waktu>.dump` tercetak, dan `ls -l var/backups` menampilkan `-rw-------`. Ini membuat `var/backups/`; cron memakai redirect ke folder itu, jadi jalankan langkah ini sebelum crontab.
+2. Pasang crontab sekali (`docs/setup-admin.md` B9), dengan `PATH`:
 
    ```
    PATH=/usr/local/bin:/usr/bin:/bin
    15 2 * * * cd <repo> && make -s backup ENV=vm >> var/backups/backup.log 2>&1
    ```
 
-2. Jalankan sekali manual: `make -s backup ENV=vm`. Harapan: satu path `var/backups/litellm-<waktu>.dump` tercetak, dan `ls -l var/backups` menampilkan `-rw-------`.
 3. Keesokan harinya cek `var/backups/backup.log` dan dump baru pukul 02:15 UTC.
 
 ## 3. T12, T13, T15 (stack lokal, mock)
