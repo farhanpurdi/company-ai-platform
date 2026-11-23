@@ -2,7 +2,7 @@
 
 Tanggal: 4 November 2026
 Status: Menunggu review
-Acuan: `docs/LITELLM_IMPLEMENTATION_GUIDE.md` (Fase 2, Gate 3), `docs/superpowers/specs/2026-10-27-litellm-pilot-design.md` (spec pilot), `docs/pilot-checklist.md` (Gate 1 dan Gate 2 lulus)
+Acuan: `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md` (Fase 2, Gate 3), `docs/fase-0-1-pilot/spec.md` (spec pilot), `docs/fase-0-1-pilot/pilot-checklist.md` (Gate 1 dan Gate 2 lulus)
 
 ## 1. Tujuan
 
@@ -41,7 +41,7 @@ Fase 2 dinyatakan selesai di sisi repo bila:
 
 ### Ranah DevOps
 
-Dicatat di `docs/devops-handoff.md` (bagian 7), masing-masing dengan kolom konfirmasi:
+Dicatat di `docs/fase-2-vm-production/devops-handoff.md` (bagian 7), masing-masing dengan kolom konfirmasi:
 
 - Proxy di depan VM: TLS, load balancing ke `litellm-a` dan `litellm-b`, serta syarat lain dari spec pilot bagian 10.
 - Prometheus mengambil `/metrics`, dashboard, dan alert.
@@ -67,7 +67,7 @@ Target make memanggil `scripts/backup.sh` di host, dengan pola yang sama seperti
 
 ### 4.2 Jadwal
 
-Cron di VM, dipasang sekali oleh admin dan didokumentasikan di `docs/setup-admin.md`:
+Cron di VM, dipasang sekali oleh admin dan didokumentasikan di `docs/panduan/setup-admin.md`:
 
 ```
 PATH=/usr/local/bin:/usr/bin:/bin
@@ -91,9 +91,9 @@ Restore hanya berhasil penuh bila `LITELLM_SALT_KEY` sama dengan saat backup dib
 
 ### 4.4 Pemulihan VM rusak
 
-Runbook di `docs/operator-guide.md`:
+Runbook di `docs/panduan/operator-guide.md`:
 
-1. Siapkan VM baru sesuai `docs/setup-admin.md` bagian B.
+1. Siapkan VM baru sesuai `docs/panduan/setup-admin.md` bagian B.
 2. Isi `deploy/env/vm.env` dengan secret yang sama, termasuk `LITELLM_SALT_KEY`.
 3. `make up ENV=vm`.
 4. Ambil dump terbaru dari penyimpanan DevOps ke `var/backups/`.
@@ -188,16 +188,16 @@ Ketentuan T13 dan T16 tidak dilonggarkan. Hasil yang tidak memenuhi kriteria dic
 
 | File | Perubahan |
 | --- | --- |
-| `docs/devops-handoff.md` (baru) | Daftar kebutuhan dari DevOps (bagian 3) dengan kolom konfirmasi: proxy (TLS, load balancing, timeout ≥ 600 detik tanpa buffering, header key tidak dicatat), target scrape dan cara memakai key, saran alert dengan nama metrik yang diambil dari `/metrics` versi yang dipin (error rate > 5%, lonjakan latency, lonjakan 429 dari OpenAI, kegagalan Redis/Postgres, spend team mendekati batas, `/health/liveliness` gagal, backup terbaru > 26 jam), dan folder `var/backups/` yang perlu disalin |
-| `docs/gate3-checklist.md` (baru) | Pola sama dengan `docs/pilot-checklist.md`: deploy perubahan ke VM (config, service account, cron, backup pertama), penerbitan key scrape, tabel hasil T12–T16, cek manual rate limit OpenAI, dan status konfirmasi DevOps |
-| `docs/operator-guide.md` | `make backup`, `make restore`, `make test-failure`, `make loadtest`, dan runbook pemulihan VM rusak (4.4) |
-| `docs/setup-admin.md` | Pemasangan cron, penerbitan key scrape, dan restore ke VM baru |
-| `docs/LITELLM_IMPLEMENTATION_GUIDE.md` | Hanya dua baris: bagian 1 baris "State" dan butir pertama Infrastruktur Fase 2 menjadi "Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2)" |
+| `docs/fase-2-vm-production/devops-handoff.md` (baru) | Daftar kebutuhan dari DevOps (bagian 3) dengan kolom konfirmasi: proxy (TLS, load balancing, timeout ≥ 600 detik tanpa buffering, header key tidak dicatat), target scrape dan cara memakai key, saran alert dengan nama metrik yang diambil dari `/metrics` versi yang dipin (error rate > 5%, lonjakan latency, lonjakan 429 dari OpenAI, kegagalan Redis/Postgres, spend team mendekati batas, `/health/liveliness` gagal, backup terbaru > 26 jam), dan folder `var/backups/` yang perlu disalin |
+| `docs/fase-2-vm-production/gate3-checklist.md` (baru) | Pola sama dengan `docs/fase-0-1-pilot/pilot-checklist.md`: deploy perubahan ke VM (config, service account, cron, backup pertama), penerbitan key scrape, tabel hasil T12–T16, cek manual rate limit OpenAI, dan status konfirmasi DevOps |
+| `docs/panduan/operator-guide.md` | `make backup`, `make restore`, `make test-failure`, `make loadtest`, dan runbook pemulihan VM rusak (4.4) |
+| `docs/panduan/setup-admin.md` | Pemasangan cron, penerbitan key scrape, dan restore ke VM baru |
+| `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md` | Hanya dua baris: bagian 1 baris "State" dan butir pertama Infrastruktur Fase 2 menjadi "Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2)" |
 | `CLAUDE.md` | Spec dan plan Fase 2 masuk daftar sumber kebenaran. Larangan: jangan `make restore` di VM tanpa diminta. Catatan: `make test-failure` hanya untuk stack lokal; T13 dan T16 tidak dilonggarkan |
 
 ## 8. Gate 3
 
-Bagian repo (backup/restore, metrik, T12, T13, T15, T16, runbook) bisa selesai lebih dulu. Gate 3 lulus bila semua berikut tercatat di `docs/gate3-checklist.md`:
+Bagian repo (backup/restore, metrik, T12, T13, T15, T16, runbook) bisa selesai lebih dulu. Gate 3 lulus bila semua berikut tercatat di `docs/fase-2-vm-production/gate3-checklist.md`:
 
 - T12, T13, T15, T16 lulus, termasuk cek manual rate limit OpenAI.
 - DevOps mengonfirmasi load balancing ke kedua replika, dan T14 lulus melalui load balancer itu.

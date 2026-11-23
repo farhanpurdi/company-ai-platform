@@ -2,7 +2,7 @@
 
 Tanggal: 27 Oktober 2026
 Status: Menunggu review
-Acuan: `docs/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/LLM_GATEWAY_ARCHITECTURE.md`
+Acuan: `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/referensi/LLM_GATEWAY_ARCHITECTURE.md`
 
 ## 1. Tujuan
 
@@ -129,7 +129,7 @@ Tambahan terhadap `config.yaml` di panduan bagian 5.2:
   - Per 1M token, tier Standard, input / input cache / cache write (30m) / output: Terra $2 / $0.20 / $2.50 / $12 dan Sol $4 / $0.40 / $5 / $20, sesuai halaman harga OpenAI pada 2026-10-30 (cache write dicek 2026-11-03). Harga Sol adalah promo sampai setidaknya 2026-11-21 dan dicek ulang pada tanggal itu.
   - `LITELLM_LOCAL_MODEL_COST_MAP=True`: LiteLLM tidak mengunduh cost map dari GitHub saat start, sehingga langkah reload cost map tidak ada di checklist. Nilai yang tidak dipin, yaitu tarif konteks di atas 272K token dan `max_output_tokens`, berasal dari cost map di image yang dipin digest dan hanya berubah saat image di-upgrade.
   - Uji acceptance memastikan spend satu request dengan cache read dan cache write, baik JSON maupun stream, sama dengan harga di `config.yaml`. Uji T02 dan T03 membaca harga dari file yang sama.
-  - Prosedur perubahan harga ada di `docs/operator-guide.md`, "Mengubah harga model".
+  - Prosedur perubahan harga ada di `docs/panduan/operator-guide.md`, "Mengubah harga model".
 - **Retry dan fallback:** `num_retries: 2` dengan backoff, `fallbacks: [{"company-reasoning": ["company-coding"]}]`, `request_timeout: 600`.
 - **Privasi log:** `turn_off_message_logging: true`, prompt tidak disimpan di spend log, `LITELLM_LOG=INFO`, `json_logs: true`.
 - **Redis:** `redis_host`, `redis_port`, `redis_password` (bukan `redis_url`).
@@ -272,10 +272,10 @@ Uji integrasi dan acceptance memakai `entitlements/local.yaml`, menerbitkan key 
 
 ## 9. Dokumentasi pengguna
 
-`docs/onboarding.md` memuat:
+`docs/panduan/onboarding.md` memuat:
 
 - Cara menyimpan key di env `COMPANY_LLM_KEY`.
-- `docs/opencode.example.json` (format panduan 5.5), dengan retry client diminimalkan. Format diverifikasi terhadap versi OpenCode yang dipakai.
+- `docs/panduan/opencode.example.json` (format panduan 5.5), dengan retry client diminimalkan. Format diverifikasi terhadap versi OpenCode yang dipakai.
 - Tabel arti error gateway: 401 key tidak valid atau diblokir, error akses model, 429 rate limit atau budget habis, 5xx masalah upstream.
 
 ## 10. Keputusan terbuka dengan nilai sementara

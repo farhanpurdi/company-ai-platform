@@ -15,7 +15,7 @@ Buka terminal baru agar variabel terbaca. Key bersifat pribadi: jangan dibagikan
 
 ## 2. Pasang template OpenCode
 
-Salin `docs/opencode.example.json` ke `opencode.json` (di root proyek) atau ke `~/.config/opencode/opencode.json` (untuk semua proyek). Template memakai `{env:COMPANY_LLM_KEY}` sehingga key tidak tertulis di file.
+Salin `docs/panduan/opencode.example.json` ke `opencode.json` (di root proyek) atau ke `~/.config/opencode/opencode.json` (untuk semua proyek). Template memakai `{env:COMPANY_LLM_KEY}` sehingga key tidak tertulis di file.
 
 Tim platform memberi alamat gateway, misalnya `http://10.0.0.5:4000/v1`. Ganti `baseURL` di template dengan alamat itu. Tidak ada file sertifikat yang perlu dipasang.
 

@@ -2,11 +2,11 @@
 
 Repo pilot gateway LLM internal berbasis LiteLLM Proxy (Fase 0–1). Sumber kebenaran:
 
-- Spec: `docs/superpowers/specs/2026-10-27-litellm-pilot-design.md`
-- Plan implementasi: `docs/superpowers/plans/2026-10-27-litellm-pilot.md`
-- Spec Fase 2: `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md`
-- Plan Fase 2: `docs/superpowers/plans/2026-11-04-fase2-vm-production.md`
-- Konteks fase dan gate: `docs/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/LLM_GATEWAY_ARCHITECTURE.md`
+- Spec: `docs/fase-0-1-pilot/spec.md`
+- Plan implementasi: `docs/fase-0-1-pilot/plan.md`
+- Spec Fase 2: `docs/fase-2-vm-production/spec.md`
+- Plan Fase 2: `docs/fase-2-vm-production/plan.md`
+- Konteks fase dan gate: `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/referensi/LLM_GATEWAY_ARCHITECTURE.md`
 
 Bila kode dan spec berbeda, tanyakan dulu. Jangan mengubah diam-diam perilaku yang dikunci spec.
 
@@ -33,5 +33,5 @@ Bila kode dan spec berbeda, tanyakan dulu. Jangan mengubah diam-diam perilaku ya
 
 ## Konvensi
 
-- `docs/*.md` dan pesan CLI untuk operator dalam bahasa Indonesia; identifier dan komentar kode dalam bahasa Inggris.
+- `docs/**/*.md` dan pesan CLI untuk operator dalam bahasa Indonesia; identifier dan komentar kode dalam bahasa Inggris.
 - Kerja di branch fitur dengan commit kecil per task. Jangan push tanpa izin pemilik repo.

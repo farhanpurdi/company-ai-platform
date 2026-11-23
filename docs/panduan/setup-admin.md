@@ -1,6 +1,6 @@
 # Setup dan menjalankan gateway: langkah demi langkah untuk admin
 
-Ikuti dokumen ini dari atas ke bawah. Setiap langkah berisi perintah yang dijalankan dan hasil yang seharusnya muncul. Bila hasilnya berbeda, berhenti dulu dan lihat bagian "Kalau gagal" di langkah itu atau tabel di `docs/operator-guide.md` bagian 7.
+Ikuti dokumen ini dari atas ke bawah. Setiap langkah berisi perintah yang dijalankan dan hasil yang seharusnya muncul. Bila hasilnya berbeda, berhenti dulu dan lihat bagian "Kalau gagal" di langkah itu atau tabel di `docs/panduan/operator-guide.md` bagian 7.
 
 Ada tiga bagian:
 
@@ -318,7 +318,7 @@ Commit perubahan file entitlements agar ada jejak siapa yang mengubah apa.
 
 Lakukan di setiap laptop yang akan memakai OpenCode ke gateway. Tidak ada file sertifikat yang perlu dipasang.
 
-1. Salin `docs/opencode.example.json` seperti di `docs/onboarding.md`, lalu ganti `baseURL` menjadi `http://10.0.0.5:4000/v1` (dengan port `LITELLM_PORT` bila bukan 4000).
+1. Salin `docs/panduan/opencode.example.json` seperti di `docs/panduan/onboarding.md`, lalu ganti `baseURL` menjadi `http://10.0.0.5:4000/v1` (dengan port `LITELLM_PORT` bila bukan 4000).
 2. Di VM, terbitkan key untuk penguji. Untuk uji T06 dan T07, pakai akun `smoke@perusahaan.com` (budget $2):
 
    ```sh
@@ -326,13 +326,13 @@ Lakukan di setiap laptop yang akan memakai OpenCode ke gateway. Tidak ada file s
    ```
 
    Key `sk-...` tampil sekali. Kirim lewat kanal aman, lalu jalankan `clear` di VM. Label harus berbeda untuk email yang sama, jadi laptop penguji kedua memakai label lain, misalnya `opencode-2`. Anggota pilot memakai email sendiri, yang harus sudah terdaftar di B6 (lihat Bagian C, "Memberi key ke pengguna").
-3. Di laptop, simpan key itu sebagai `COMPANY_LLM_KEY` (lihat `docs/onboarding.md` bagian 1).
+3. Di laptop, simpan key itu sebagai `COMPANY_LLM_KEY` (lihat `docs/panduan/onboarding.md` bagian 1).
 
 Pakai gateway hanya saat laptop terhubung ke jaringan kantor, karena key terkirim tanpa enkripsi.
 
 ### B8. Lanjut ke uji T06, T07, dan T11
 
-Gateway siap. Ikuti `docs/pilot-checklist.md` mulai dari langkah 2.5 (menerbitkan key smoke), lalu bagian 3 sampai 6.
+Gateway siap. Ikuti `docs/fase-0-1-pilot/pilot-checklist.md` mulai dari langkah 2.5 (menerbitkan key smoke), lalu bagian 3 sampai 6.
 
 ### B9. Backup harian (crontab)
 
@@ -343,7 +343,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 15 2 * * * cd <path-repo> && make -s backup ENV=vm >> var/backups/backup.log 2>&1
 ```
 
-Ganti `<path-repo>` dengan lokasi clone repo. Tes manual dulu: `make -s backup ENV=vm` harus mencetak satu path dump, dan `ls -l var/backups` menampilkan `-rw-------`. Keesokan harinya cek `var/backups/backup.log` dan dump baru. DevOps menyalin `var/backups/` keluar VM dan memberi alert bila dump terbaru lebih tua dari 26 jam (`docs/devops-handoff.md`).
+Ganti `<path-repo>` dengan lokasi clone repo. Tes manual dulu: `make -s backup ENV=vm` harus mencetak satu path dump, dan `ls -l var/backups` menampilkan `-rw-------`. Keesokan harinya cek `var/backups/backup.log` dan dump baru. DevOps menyalin `var/backups/` keluar VM dan memberi alert bila dump terbaru lebih tua dari 26 jam (`docs/fase-2-vm-production/devops-handoff.md`).
 
 ### B10. Key untuk Prometheus DevOps
 
@@ -353,7 +353,7 @@ Service account `prometheus` (di `entitlements/pilot.yaml`) adalah admin read-on
 make -s ctl ENV=vm ARGS='key issue --user prometheus --label scrape'
 ```
 
-Key `sk-...` tampil sekali. Kirim ke DevOps lewat kanal aman, jangan ditulis ke file atau chat, lalu jalankan `clear`. Bila replika baru saja mendapat config baru, nyalakan ulang dulu seperti di `docs/gate3-checklist.md` bagian 1 supaya `/metrics` aktif. Cara memakainya ada di `docs/devops-handoff.md` bagian 3.
+Key `sk-...` tampil sekali. Kirim ke DevOps lewat kanal aman, jangan ditulis ke file atau chat, lalu jalankan `clear`. Bila replika baru saja mendapat config baru, nyalakan ulang dulu seperti di `docs/fase-2-vm-production/gate3-checklist.md` bagian 1 supaya `/metrics` aktif. Cara memakainya ada di `docs/fase-2-vm-production/devops-handoff.md` bagian 3.
 
 ### Nanti: proxy DevOps di depan VM
 
@@ -387,7 +387,7 @@ Untuk VM, tambahkan `ENV=vm` ke setiap perintah di bawah.
 make -s ctl ARGS='key issue --user nama.depan@perusahaan.com --label opencode'
 ```
 
-Key `sk-...` tampil **sekali** di terminal. Salin langsung ke kanal aman (misalnya fitur berbagi di password manager perusahaan), lalu bersihkan layar terminal dengan `clear`. Jangan kirim lewat chat atau email biasa, dan jangan simpan di file. Kirim juga `docs/onboarding.md` ke pengguna sebagai petunjuk pemakaian.
+Key `sk-...` tampil **sekali** di terminal. Salin langsung ke kanal aman (misalnya fitur berbagi di password manager perusahaan), lalu bersihkan layar terminal dengan `clear`. Jangan kirim lewat chat atau email biasa, dan jangan simpan di file. Kirim juga `docs/panduan/onboarding.md` ke pengguna sebagai petunjuk pemakaian.
 
 Bila key hilang, key tidak bisa ditampilkan lagi. Blokir yang lama lalu terbitkan yang baru dengan label lain.
 
@@ -421,7 +421,7 @@ Ubah `budget`, `rpm_limit`, atau `models` di file entitlements, lalu `make plan`
 
 ### Memulihkan dari backup
 
-Memulihkan database dari dump (VM rusak atau data salah) dijelaskan di `docs/operator-guide.md`, bagian "Backup dan restore". `make restore ENV=vm` mengganti isi database produksi, jadi hanya dijalankan atas permintaan pemilik repo, dan `LITELLM_SALT_KEY` harus sama dengan saat backup dibuat.
+Memulihkan database dari dump (VM rusak atau data salah) dijelaskan di `docs/panduan/operator-guide.md`, bagian "Backup dan restore". `make restore ENV=vm` mengganti isi database produksi, jadi hanya dijalankan atas permintaan pemilik repo, dan `LITELLM_SALT_KEY` harus sama dengan saat backup dibuat.
 
 ### Melihat log
 
@@ -430,4 +430,4 @@ make logs ARGS='--tail 100 litellm-a'   # log gateway
 make logs ARGS='-f litellm-a'           # ikuti log secara langsung (tekan Ctrl+C untuk berhenti)
 ```
 
-Referensi lengkap perintah, exit code, dan troubleshooting ada di `docs/operator-guide.md`.
+Referensi lengkap perintah, exit code, dan troubleshooting ada di `docs/panduan/operator-guide.md`.

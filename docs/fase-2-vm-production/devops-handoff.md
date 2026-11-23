@@ -1,6 +1,6 @@
 # Serah terima ke DevOps: gateway LiteLLM di VM
 
-Dokumen ini berisi apa yang disediakan repo dan apa yang diminta dari DevOps untuk Fase 2 (spec `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md`). Gateway berjalan dengan Docker di satu VM dan diakses lewat HTTP di jaringan internal. TLS, load balancing, monitoring, dan penyimpanan backup di luar VM adalah ranah DevOps; repo ini tidak membangun pengganti untuk itu.
+Dokumen ini berisi apa yang disediakan repo dan apa yang diminta dari DevOps untuk Fase 2 (spec `docs/fase-2-vm-production/spec.md`). Gateway berjalan dengan Docker di satu VM dan diakses lewat HTTP di jaringan internal. TLS, load balancing, monitoring, dan penyimpanan backup di luar VM adalah ranah DevOps; repo ini tidak membangun pengganti untuk itu.
 
 ## 1. Pembagian tugas
 
@@ -78,7 +78,7 @@ Nama metrik diambil dari `/metrics` versi LiteLLM yang dipin (`v1.106.4`). Histo
 - DevOps menyalin `var/backups/` keluar VM secara berkala dan memberi alert bila file terbaru lebih tua dari 26 jam. Cron mencatat hasilnya di `var/backups/backup.log`.
 - Dump berisi hash key, data team, spend, dan kredensial terenkripsi. Tujuan salinan harus terbatas aksesnya.
 - Restore hanya berhasil bila `LITELLM_SALT_KEY` sama dengan saat backup dibuat. Simpan salt key di secret manager, terpisah dari dump.
-- Restore dijalankan tim gateway (`docs/operator-guide.md`, "Backup dan restore"). Kehilangan data maksimal sejak backup terakhir, sekitar satu hari.
+- Restore dijalankan tim gateway (`docs/panduan/operator-guide.md`, "Backup dan restore"). Kehilangan data maksimal sejak backup terakhir, sekitar satu hari.
 
 ## 5. Konfirmasi
 

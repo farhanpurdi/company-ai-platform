@@ -1,6 +1,6 @@
 # Panduan operator: menyalakan dan memakai gateway
 
-Dokumen ini untuk tim platform yang menjalankan gateway. Pengguna akhir cukup membaca `docs/onboarding.md`. Langkah deploy VM dan uji Gate 2 (T06, T07, T11) ada di `docs/pilot-checklist.md`; dokumen ini menjelaskan dasar yang dipakai checklist itu.
+Dokumen ini untuk tim platform yang menjalankan gateway. Pengguna akhir cukup membaca `docs/panduan/onboarding.md`. Langkah deploy VM dan uji Gate 2 (T06, T07, T11) ada di `docs/fase-0-1-pilot/pilot-checklist.md`; dokumen ini menjelaskan dasar yang dipakai checklist itu.
 
 ## 1. Gambaran singkat
 
@@ -93,7 +93,7 @@ unset KEY
 
 Ini hanya untuk memeriksa konfigurasi, karena mock tidak memberikan jawaban yang bermakna dan tidak bisa menjalankan agent. Uji OpenCode yang sebenarnya (T06, T07) dilakukan di VM.
 
-1. Salin `docs/opencode.example.json` dan ganti `baseURL` menjadi `http://127.0.0.1:4000/v1`. Tidak perlu mengubah `/etc/hosts` dan tidak perlu file CA.
+1. Salin `docs/panduan/opencode.example.json` dan ganti `baseURL` menjadi `http://127.0.0.1:4000/v1`. Tidak perlu mengubah `/etc/hosts` dan tidak perlu file CA.
 2. Jalankan OpenCode dengan `COMPANY_LLM_KEY` diisi key dari langkah di atas.
 
 ## 4. Operasi harian
@@ -181,7 +181,7 @@ Spend yang sudah tercatat tidak dihitung ulang; harga baru hanya berlaku untuk r
 
 ```sh
 make -s backup                  # stdout hanya berisi path dump; ringkasan ke stderr
-make -s backup ENV=vm           # di VM; dipanggil juga oleh cron (docs/setup-admin.md B9)
+make -s backup ENV=vm           # di VM; dipanggil juga oleh cron (docs/panduan/setup-admin.md B9)
 BACKUP_KEEP_DAYS=14 make -s backup   # retensi (bilangan bulat >= 1, default 7)
 ```
 
@@ -196,7 +196,7 @@ make restore BACKUP=var/backups/litellm-<waktu>.dump CONFIRM=1    # mengganti is
 
 **Pemulihan VM rusak** (kehilangan data maksimal sejak backup terakhir, sekitar satu hari):
 
-1. Siapkan VM baru sesuai `docs/setup-admin.md` bagian B.
+1. Siapkan VM baru sesuai `docs/panduan/setup-admin.md` bagian B.
 2. Isi `deploy/env/vm.env` dengan secret yang sama, termasuk `LITELLM_SALT_KEY`.
 3. `make up ENV=vm`.
 4. Ambil dump terbaru dari penyimpanan DevOps ke `var/backups/`.
@@ -227,11 +227,11 @@ Jangan pernah memakai `docker compose down -v` atau menghapus volume `pgdata`, k
 
 `make test` menjalankan sekitar 25 uji acceptance yang memakai state bersama (budget, rate limit, mock). Jangan menjalankan dua `make test` bersamaan. Baris `T03 spend=...` dan `T05 revocation seconds=...` di output dicatat ke tabel Gate 2 di checklist.
 
-`make test`, `make test-failure`, dan `make loadtest` berbagi state stack lokal: jangan menjalankan dua di antaranya bersamaan. Baris `T12 ...`, `T13 ...`, `T15 restore ok`, dan `T16 concurrency=...` dicatat ke tabel di `docs/gate3-checklist.md`. Angka resmi T16 diambil di VM (checklist bagian 4); angka di laptop hanya untuk pengembangan.
+`make test`, `make test-failure`, dan `make loadtest` berbagi state stack lokal: jangan menjalankan dua di antaranya bersamaan. Baris `T12 ...`, `T13 ...`, `T15 restore ok`, dan `T16 concurrency=...` dicatat ke tabel di `docs/fase-2-vm-production/gate3-checklist.md`. Angka resmi T16 diambil di VM (checklist bagian 4); angka di laptop hanya untuk pengembangan.
 
 ## 6. Persiapan VM sebelum T06, T07, dan T11
 
-Urutan lengkapnya ada di `docs/pilot-checklist.md` bagian 2–5. Hal yang perlu disiapkan sebelum mulai:
+Urutan lengkapnya ada di `docs/fase-0-1-pilot/pilot-checklist.md` bagian 2–5. Hal yang perlu disiapkan sebelum mulai:
 
 - **Akses dan software:** VM dengan Docker (Compose v2), `make`, dan `git`, plus clone repo ini di branch yang akan diuji.
 - **Secret:** semua nilai di `deploy/env/vm.env.example`, diambil dari secret manager. `OPENAI_API_KEY` sebaiknya milik OpenAI Project khusus gateway, supaya usage di dashboard OpenAI bisa dicocokkan untuk T11.
@@ -261,5 +261,5 @@ Lalu ikuti checklist mulai dari `make plan ENV=vm`.
 | `gatewayctl` exit 3 | LiteLLM belum siap. Tunggu `make ps` menunjukkan healthy, lalu ulangi. |
 | `GATEWAYCTL_OPERATOR wajib diisi` | `git config user.email` kosong; tambahkan `OPERATOR=nama@perusahaan.com`. |
 | `key issue` menolak user | User belum ada di file entitlements atau belum di-`apply`. |
-| 401, 429, 422 `budget_exceeded` | Lihat tabel error di `docs/onboarding.md`. |
+| 401, 429, 422 `budget_exceeded` | Lihat tabel error di `docs/panduan/onboarding.md`. |
 | 422 `budget_exceeded` padahal spend masih di bawah budget | Sisa budget lebih kecil dari taksiran biaya terburuk satu request (lihat [Mengubah team, member, atau budget](#mengubah-team-member-atau-budget)). Naikkan budget lewat file entitlements, minta pengguna mengisi `max_tokens` yang lebih kecil, atau tunggu window budget di-reset. |

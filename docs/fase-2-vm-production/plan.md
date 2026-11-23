@@ -8,7 +8,7 @@
 
 **Tech Stack:** Docker Compose v2, GNU Make, POSIX sh, Python 3.12 dengan pytest dan httpx (di container `tools`), PostgreSQL 16 (`pg_dump`/`pg_restore` di container `postgres`), Redis 7, LiteLLM `v1.106.4` yang dipin ke digest.
 
-**Spec:** `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md`
+**Spec:** `docs/fase-2-vm-production/spec.md`
 
 ## Global Constraints
 
@@ -24,7 +24,7 @@
 - Branch `feat/fase2-vm-production` dari `main` setelah PR spec dan plan ini di-merge. Satu commit per task, selalu lewat hook pre-commit (tanpa `--no-verify`). Push hanya dengan izin pemilik repo.
 - `make test`, `make test-failure`, dan `make loadtest` berbagi state stack lokal: jangan dijalankan bersamaan.
 - Jangan pernah `docker compose down -v`.
-- File yang tidak boleh diubah: kedua spec, `docs/LLM_GATEWAY_ARCHITECTURE.md`, plan pilot, dan `docs/LITELLM_IMPLEMENTATION_GUIDE.md` kecuali dua baris di Task 9.
+- File yang tidak boleh diubah: kedua spec, `docs/referensi/LLM_GATEWAY_ARCHITECTURE.md`, plan pilot, dan `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md` kecuali dua baris di Task 9.
 
 ## Review Focus
 
@@ -50,8 +50,8 @@
 | `tests/failure/test_t15_restore.py` | Buat | 7 |
 | `scripts/failure-tests.sh` | Ubah (skenario `t15`) | 7 |
 | `tests/load/test_t16_load.py` | Buat | 8 |
-| `docs/devops-handoff.md`, `docs/gate3-checklist.md` | Buat | 9 |
-| `docs/operator-guide.md`, `docs/setup-admin.md`, `docs/LITELLM_IMPLEMENTATION_GUIDE.md` (dua baris), `deploy/tests/test_docs_access.py` | Ubah | 9 |
+| `docs/fase-2-vm-production/devops-handoff.md`, `docs/fase-2-vm-production/gate3-checklist.md` | Buat | 9 |
+| `docs/panduan/operator-guide.md`, `docs/panduan/setup-admin.md`, `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md` (dua baris), `deploy/tests/test_docs_access.py` | Ubah | 9 |
 
 Urutan: Task 1 → 2 → 3 → 4 → 5 → 6 → 7 (butuh 2, 3, 6) → 8 → 9 (butuh nama metrik dari 4 dan semua target make) → 10.
 
@@ -118,7 +118,7 @@ Tambahkan ke `ALLOW_BASH`: `"make restore BACKUP=var/backups/x.dump CONFIRM=1"` 
   - Perluas pola `pgrep -f` menjadi `'tests/integration tests/acceptance|failure-tests\.sh|tests/failure|tests/load'`.
 
 - [ ] **Step 4: Ubah `CLAUDE.md`**
-  - Sumber kebenaran: tambahkan `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md` dan plan ini.
+  - Sumber kebenaran: tambahkan `docs/fase-2-vm-production/spec.md` dan plan ini.
   - Larangan: "Jangan `make restore` di VM tanpa diminta pemilik repo: isi database diganti isi dump."
   - Cara kerja: "`make test-failure` (T12, T13, T15) hanya untuk stack lokal dan mematikan Redis/Postgres sementara. `make loadtest` (T16) memakai mock. Jangan jalankan `make test`, `make test-failure`, dan `make loadtest` bersamaan."
   - Baris ambang: ubah menjadi "Ambang T03 (overshoot ≤ 10%), T09 (tanpa fallback di tengah stream), T13 (key yang di-cache ditolak ≤ 300 detik), dan T16 (0 error, selisih p95 token pertama ≤ 1 detik) tidak boleh dilonggarkan, di-skip, atau di-xfail."
@@ -537,8 +537,8 @@ Harapan: PASS dan dua baris T16 tercetak. Angka di laptop hanya untuk pengembang
 ### Task 9: Dokumen Fase 2
 
 **Files:**
-- Create: `docs/devops-handoff.md`, `docs/gate3-checklist.md`
-- Modify: `docs/operator-guide.md`, `docs/setup-admin.md`, `docs/LITELLM_IMPLEMENTATION_GUIDE.md`, `deploy/tests/test_docs_access.py`
+- Create: `docs/fase-2-vm-production/devops-handoff.md`, `docs/fase-2-vm-production/gate3-checklist.md`
+- Modify: `docs/panduan/operator-guide.md`, `docs/panduan/setup-admin.md`, `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md`, `deploy/tests/test_docs_access.py`
 
 **Interfaces:**
 - Consumes: semua target make (Task 2, 3, 6, 8) dan `var/metrics-families.txt` (Task 4 Step 7).
@@ -548,13 +548,13 @@ Harapan: PASS dan dua baris T16 tercetak. Angka di laptop hanya untuk pengembang
 Tambahkan ke `DOCS` di `deploy/tests/test_docs_access.py`. Daftar `STALE` juga berlaku untuk file baru.
 
 ```python
-"docs/devops-handoff.md": ["/metrics", "Authorization: Bearer", "var/backups", "/health/liveliness", "26 jam"],
-"docs/gate3-checklist.md": ["make test-failure", "make loadtest", "LITELLM_PORT=4100", "15 2 * * *", "T14"],
+"docs/fase-2-vm-production/devops-handoff.md": ["/metrics", "Authorization: Bearer", "var/backups", "/health/liveliness", "26 jam"],
+"docs/fase-2-vm-production/gate3-checklist.md": ["make test-failure", "make loadtest", "LITELLM_PORT=4100", "15 2 * * *", "T14"],
 ```
 
-Tambahkan juga `"make backup"` dan `"make restore"` ke entri `docs/operator-guide.md`, serta `"crontab"` ke `docs/setup-admin.md`. Jalankan `make unit`. Harapan: FAIL.
+Tambahkan juga `"make backup"` dan `"make restore"` ke entri `docs/panduan/operator-guide.md`, serta `"crontab"` ke `docs/panduan/setup-admin.md`. Jalankan `make unit`. Harapan: FAIL.
 
-- [ ] **Step 2: Tulis `docs/devops-handoff.md`**
+- [ ] **Step 2: Tulis `docs/fase-2-vm-production/devops-handoff.md`**
 
 Isinya sesuai spec bagian 3, 5.4, dan 7:
 1. Pembagian tugas.
@@ -567,7 +567,7 @@ Isinya sesuai spec bagian 3, 5.4, dan 7:
 4. Backup: `var/backups/litellm-*.dump`, jadwal 02:15, alert bila file terbaru lebih tua dari 26 jam, dan tujuan salinan harus terbatas aksesnya.
 5. Tabel konfirmasi (butir, dikonfirmasi oleh, tanggal).
 
-- [ ] **Step 3: Tulis `docs/gate3-checklist.md`**, dengan pola `docs/pilot-checklist.md`:
+- [ ] **Step 3: Tulis `docs/fase-2-vm-production/gate3-checklist.md`**, dengan pola `docs/fase-0-1-pilot/pilot-checklist.md`:
   1. **Deploy Fase 2 ke VM:**
      - `git pull`, `make up ENV=vm`
      - `make plan ENV=vm` (harus ada `+ add_service_account prometheus` atau aksi setara), lalu `make apply ENV=vm`
@@ -583,16 +583,16 @@ Isinya sesuai spec bagian 3, 5.4, dan 7:
      - `make up`, `make loadtest`, lalu `make down` (tanpa `-v`)
      - cek manual: jumlah `rpm_limit` team dibandingkan limit tier OpenAI
   5. **T14:** menunggu load balancing DevOps; langkahnya ditulis saat alamat tersedia.
-  6. **Konfirmasi DevOps:** rujuk `docs/devops-handoff.md`.
+  6. **Konfirmasi DevOps:** rujuk `docs/fase-2-vm-production/devops-handoff.md`.
   7. **Tabel hasil** (uji, hasil, tanggal, operator).
 
-- [ ] **Step 4: Perbarui `docs/operator-guide.md` dan `docs/setup-admin.md`**
+- [ ] **Step 4: Perbarui `docs/panduan/operator-guide.md` dan `docs/panduan/setup-admin.md`**
   - Operator guide:
     - bagian "Backup dan restore": `make backup`, `make restore BACKUP=… CONFIRM=1`, syarat salt key yang sama, runbook spec 4.4
     - di bagian 5: `make test-failure` dan `make loadtest`
   - Setup admin: B9 "Backup harian (crontab)", B10 "Key untuk Prometheus DevOps", dan di Bagian C "Memulihkan dari backup" yang merujuk ke operator guide.
 
-- [ ] **Step 5: Ubah dua baris di `docs/LITELLM_IMPLEMENTATION_GUIDE.md`**
+- [ ] **Step 5: Ubah dua baris di `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md`**
   - Bagian 1: `| State | Managed PostgreSQL + managed Redis 7.0+ |` menjadi `| State | Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2) |`.
   - Fase 2: butir `Managed Postgres (backup harian, point-in-time recovery) dan managed Redis 7.0+` menjadi `Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2)`.
   - Bagian lain tidak diubah.
@@ -612,4 +612,4 @@ Isinya sesuai spec bagian 3, 5.4, dan 7:
   - ringkasan per task
   - keluaran T12, T13, T15, T16 (laptop)
   - nama metrik yang dipakai
-  - langkah di VM yang masih harus dijalankan operator menurut `docs/gate3-checklist.md`
+  - langkah di VM yang masih harus dijalankan operator menurut `docs/fase-2-vm-production/gate3-checklist.md`

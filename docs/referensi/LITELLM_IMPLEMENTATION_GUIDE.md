@@ -202,12 +202,12 @@ Streaming dilayani LiteLLM langsung, dengan `request_timeout: 600` di `config.ya
 
 Team, member, budget, dan izin alias ditulis di `entitlements/*.yaml`, lalu diterapkan dengan `make plan` dan `make apply`. Jangan memakai `curl` manual ke management API atau mengubahnya lewat Admin UI, karena perubahan itu ditimpa lagi oleh `make apply` berikutnya. Key diterbitkan dan diblokir dengan `gatewayctl` (`make ctl`).
 
-Langkah lengkapnya ada di `docs/setup-admin.md`:
+Langkah lengkapnya ada di `docs/panduan/setup-admin.md`:
 
 - Mendaftarkan team dan user pilot di VM: bagian B6.
 - Menambah pengguna, memberi key, melihat key dan pemakaian, memblokir key, offboarding, serta mengubah budget atau model: Bagian C.
 
-Referensi perintah `gatewayctl` ada di `docs/operator-guide.md` bagian 4.
+Referensi perintah `gatewayctl` ada di `docs/panduan/operator-guide.md` bagian 4.
 
 ### 5.5 Contoh konfigurasi OpenCode
 
@@ -361,10 +361,10 @@ Governance:
 1. Pastikan user ada di grup IdP yang benar.
 2. Tambahkan email user di `members` team yang tepat di `entitlements/pilot.yaml`, lalu `make plan ENV=vm` dan `make apply ENV=vm`. Budget dan limit key mengikuti `member_defaults` team, kecuali di-override per member.
 3. Terbitkan key: `make -s ctl ENV=vm ARGS='key issue --user <email> --label opencode'`. Key tampil sekali.
-4. Kirim key lewat kanal aman beserta `docs/onboarding.md`; user memasangnya sebagai environment variable dan memakai template OpenCode.
+4. Kirim key lewat kanal aman beserta `docs/panduan/onboarding.md`; user memasangnya sebagai environment variable dan memakai template OpenCode.
 5. Commit perubahan file entitlements. `make apply` dan `make ctl` mencatat setiap aksi di `var/audit.log`.
 
-Detail dan penanganan error ada di `docs/setup-admin.md` Bagian C.
+Detail dan penanganan error ada di `docs/panduan/setup-admin.md` Bagian C.
 
 ### 8.2 Offboarding user
 

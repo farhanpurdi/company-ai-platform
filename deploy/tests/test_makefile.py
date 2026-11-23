@@ -86,7 +86,7 @@ def test_smoke_key_is_not_documented_as_make_argument():
     # A make argument lands in argv, which every user on the host can read via ps.
     text = MAKEFILE.read_text(encoding="utf-8")
     assert "make smoke SMOKE_KEY=" not in text
-    checklist = (MAKEFILE.parent / "docs" / "pilot-checklist.md").read_text(encoding="utf-8")
+    checklist = (MAKEFILE.parent / "docs" / "fase-0-1-pilot" / "pilot-checklist.md").read_text(encoding="utf-8")
     assert "SMOKE_KEY=\"$SMOKE_KEY\"`" not in checklist
     assert "SMOKE_KEY=\"$SMOKE_KEY\" make smoke ENV=vm" in checklist
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Docker Compose, LiteLLM Proxy (≥ v1.93.0-stable, dipin digest), Postgres 16, Redis 7, Caddy 2, Python 3.12, pydantic v2, PyYAML, httpx, Typer, pytest, respx, FastAPI, uvicorn.
 
-**Spec:** `docs/superpowers/specs/2026-10-27-litellm-pilot-design.md`
+**Spec:** `docs/fase-0-1-pilot/spec.md`
 
 ## Global Constraints
 
@@ -58,7 +58,7 @@
 | `entitlements/local.yaml`, `entitlements/pilot.yaml` | Entitlement uji dan pilot |
 | `tests/helpers.py`, `tests/conftest.py` | Helper uji bersama |
 | `tests/integration/`, `tests/acceptance/`, `tests/smoke/` | Lapisan uji |
-| `docs/onboarding.md`, `docs/opencode.example.json`, `docs/pilot-checklist.md` | Dokumentasi |
+| `docs/panduan/onboarding.md`, `docs/panduan/opencode.example.json`, `docs/fase-0-1-pilot/pilot-checklist.md` | Dokumentasi |
 | `Makefile`, `.gitignore` | Perintah operasi |
 
 ---
@@ -581,7 +581,7 @@ Bila T03 gagal karena overshoot melebihi 10%, **jangan longgarkan ambang**. Lapo
 ### Task 9: Smoke OpenAI asli, entitlement pilot, dan dokumentasi
 
 **Files:**
-- Create: `tests/smoke/test_smoke.py`, `tests/smoke/spend_report.py`, `entitlements/pilot.yaml`, `docs/onboarding.md`, `docs/opencode.example.json`, `docs/pilot-checklist.md`
+- Create: `tests/smoke/test_smoke.py`, `tests/smoke/spend_report.py`, `entitlements/pilot.yaml`, `docs/panduan/onboarding.md`, `docs/panduan/opencode.example.json`, `docs/fase-0-1-pilot/pilot-checklist.md`
 - Modify: `Makefile` (target `smoke`)
 
 **Interfaces:**
@@ -614,9 +614,9 @@ Expected: T06 PASS terhadap mock. T07 PASS untuk tool call tanpa stream. Uji yan
 - [ ] **Step 3: Tulis entitlement pilot dan dokumentasi**
 
 - `entitlements/pilot.yaml`: team `it-developer` dan `finance` dengan nilai dari matriks panduan 4.1, satu `smoke@perusahaan.com` di `it-developer` dengan key 30d $2, dan member lain dikomentari sebagai tempat isian.
-- `docs/opencode.example.json`: format panduan 5.5 dengan model `company-coding` dan `company-reasoning`. Cek dokumentasi OpenCode (context7) untuk pengaturan retry client. Bila ada, set ke minimum; bila tidak ada, nyatakan itu di onboarding.
-- `docs/onboarding.md`: menyimpan key di `COMPANY_LLM_KEY`, memasang template, dan tabel error (401 key tidak valid/diblokir, error akses model, 429 rate limit atau budget habis, 5xx masalah upstream).
-- `docs/pilot-checklist.md`: konfirmasi Gate 1 (nilai sementara spec bagian 10); langkah deploy VM (`vm.env`, sertifikat di `deploy/certs/`, `make up ENV=vm`, `make plan/apply ENV=vm`, `key issue` untuk smoke); T06/T07 manual (sesi OpenCode ≥ 10 menit di kedua alias, tugas agent yang mengedit file); prosedur T11 (`spend_report.py` sebelum dan sesudah smoke, bandingkan dengan dashboard usage OpenAI Project, selisih < 5%); tempat mencatat hasil T03 dan T05.
+- `docs/panduan/opencode.example.json`: format panduan 5.5 dengan model `company-coding` dan `company-reasoning`. Cek dokumentasi OpenCode (context7) untuk pengaturan retry client. Bila ada, set ke minimum; bila tidak ada, nyatakan itu di onboarding.
+- `docs/panduan/onboarding.md`: menyimpan key di `COMPANY_LLM_KEY`, memasang template, dan tabel error (401 key tidak valid/diblokir, error akses model, 429 rate limit atau budget habis, 5xx masalah upstream).
+- `docs/fase-0-1-pilot/pilot-checklist.md`: konfirmasi Gate 1 (nilai sementara spec bagian 10); langkah deploy VM (`vm.env`, sertifikat di `deploy/certs/`, `make up ENV=vm`, `make plan/apply ENV=vm`, `key issue` untuk smoke); T06/T07 manual (sesi OpenCode ≥ 10 menit di kedua alias, tugas agent yang mengedit file); prosedur T11 (`spend_report.py` sebelum dan sesudah smoke, bandingkan dengan dashboard usage OpenAI Project, selisih < 5%); tempat mencatat hasil T03 dan T05.
 
 - [ ] **Step 4: Validasi**
 

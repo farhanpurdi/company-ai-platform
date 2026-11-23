@@ -3,14 +3,14 @@
 Pakai di sesi Claude Code baru, di root repo, dalam mode auto, setelah PR spec dan plan Fase 2 di-merge ke `main`:
 
 ```
-/goal execute docs/superpowers/plans/2026-11-04-fase2-vm-production-goal.md
+/goal execute docs/fase-2-vm-production/goal.md
 ```
 
 Pemilik repo meminta file ini dijalankan dengan eksekusi native: sesi ini sendiri mengerjakan semua task dengan skill `superpowers:executing-plans`, tanpa workflow dan tanpa subagent implementer. Setelah semua task selesai, satu reviewer baru memeriksa seluruh branch.
 
-Rencana lengkapnya ada di `docs/superpowers/plans/2026-11-04-fase2-vm-production.md`, dan Global Constraints di sana berlaku untuk semua langkah. Spec-nya ada di `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md`.
+Rencana lengkapnya ada di `docs/fase-2-vm-production/plan.md`, dan Global Constraints di sana berlaku untuk semua langkah. Spec-nya ada di `docs/fase-2-vm-production/spec.md`.
 
-Run ini hanya memakai stack lokal (`ENV=local`). Tidak ada perintah dengan `ENV=vm`. Langkah di VM dijalankan operator sesuai `docs/gate3-checklist.md` setelah PR implementasi di-merge.
+Run ini hanya memakai stack lokal (`ENV=local`). Tidak ada perintah dengan `ENV=vm`. Langkah di VM dijalankan operator sesuai `docs/fase-2-vm-production/gate3-checklist.md` setelah PR implementasi di-merge.
 
 ## Selesai bila
 
@@ -45,7 +45,7 @@ git fetch origin
 git rev-parse --abbrev-ref HEAD                      # harus main
 git status --porcelain                               # harus kosong
 git rev-list --count HEAD..origin/main               # harus 0
-test -f docs/superpowers/plans/2026-11-04-fase2-vm-production.md && echo plan-ok
+test -f docs/fase-2-vm-production/plan.md && echo plan-ok
 git config core.hooksPath                            # harus .githooks
 test -f deploy/env/local.env && echo env-ok          # hanya cek keberadaan; isinya tidak dibaca
 docker info >/dev/null 2>&1 && echo docker-ok
@@ -64,7 +64,7 @@ docker info >/dev/null 2>&1 && echo docker-ok
 5. **Jalankan Task 10 Step 1 sampai Step 3.** Step 4 (push dan PR) tidak dijalankan.
 6. **Review akhir.** Kirim satu reviewer baru (Agent tool, `subagent_type: "general-purpose"`) dengan brief berikut, tanpa menyertakan kesimpulan Anda sendiri:
 
-   > Review branch `feat/fase2-vm-production` (`git log --oneline main..HEAD`, `git diff main...HEAD`) terhadap spec `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md` dan plan `docs/superpowers/plans/2026-11-04-fase2-vm-production.md`, termasuk Global Constraints, Review Focus, dan aturan di `CLAUDE.md`. Fokus pada: skrip backup/restore yang bisa kehilangan atau merusak data, skrip uji kegagalan yang bisa meninggalkan stack mati atau menyentuh `ENV=vm`, key mentah atau rahasia yang tertulis ke file, argv, atau log, ambang uji yang dilonggarkan, dan dokumen yang tidak sesuai perintah sebenarnya. Jalankan `make unit` sendiri. Jangan menjalankan `make test`, `make test-failure`, atau `make loadtest`, dan jangan mengubah file apa pun. Laporkan setiap temuan dengan file:baris, skenario kegagalan konkret, dan tingkat keparahan, lalu beri putusan akhir: DISETUJUI atau PERLU PERBAIKAN.
+   > Review branch `feat/fase2-vm-production` (`git log --oneline main..HEAD`, `git diff main...HEAD`) terhadap spec `docs/fase-2-vm-production/spec.md` dan plan `docs/fase-2-vm-production/plan.md`, termasuk Global Constraints, Review Focus, dan aturan di `CLAUDE.md`. Fokus pada: skrip backup/restore yang bisa kehilangan atau merusak data, skrip uji kegagalan yang bisa meninggalkan stack mati atau menyentuh `ENV=vm`, key mentah atau rahasia yang tertulis ke file, argv, atau log, ambang uji yang dilonggarkan, dan dokumen yang tidak sesuai perintah sebenarnya. Jalankan `make unit` sendiri. Jangan menjalankan `make test`, `make test-failure`, atau `make loadtest`, dan jangan mengubah file apa pun. Laporkan setiap temuan dengan file:baris, skenario kegagalan konkret, dan tingkat keparahan, lalu beri putusan akhir: DISETUJUI atau PERLU PERBAIKAN.
 
    Periksa setiap temuan terhadap kode sebelum memperbaikinya (skill `superpowers:receiving-code-review`). Perbaiki temuan yang terkonfirmasi dalam commit baru, lalu ulangi Task 10 Step 1 sampai Step 3. Temuan yang Anda tolak dicatat beserta alasannya di laporan akhir.
 7. **Tampilkan bukti akhir:**
@@ -79,7 +79,7 @@ docker info >/dev/null 2>&1 && echo docker-ok
 
 - Jangan push, jangan membuat PR, dan jangan menjalankan amend atau rebase. Push dan PR menunggu izin pemilik repo (rencana Task 10 Step 4).
 - Jangan menjalankan perintah apa pun dengan `ENV=vm`, dan jangan menjalankan `make restore` selain lewat `make test-failure` di stack lokal.
-- Jangan mengubah spec, rencana, file ini, `docs/LLM_GATEWAY_ARCHITECTURE.md`, atau bagian `docs/LITELLM_IMPLEMENTATION_GUIDE.md` di luar dua baris Task 9.
+- Jangan mengubah spec, rencana, file ini, `docs/referensi/LLM_GATEWAY_ARCHITECTURE.md`, atau bagian `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md` di luar dua baris Task 9.
 - Jangan membaca atau mencetak `deploy/env/*.env`. Jangan menulis key mentah ke file, kecuali `var/t10-sentinels.txt` yang sudah ada.
 - Jangan menjalankan `make test`, `make test-failure`, dan `make loadtest` bersamaan.
 - Jangan pernah `docker compose down -v` atau menghapus volume.
@@ -100,9 +100,9 @@ T12: <baris T12 behavior dan T12 recovery>
 T13: <baris T13 cached_key_seconds dan T13 recovery>
 T15: <baris T15 restore ok>
 T16: <dua baris T16 concurrency>
-Metrik: <nama family yang dipakai di docs/devops-handoff.md>
+Metrik: <nama family yang dipakai di docs/fase-2-vm-production/devops-handoff.md>
 Penyesuaian dari rencana: <daftar, atau "tidak ada">
 Review akhir: <putusan reviewer; temuan yang diperbaiki; temuan yang ditolak beserta alasan>
-Belum dilakukan: push dan PR (butuh izin pemilik repo); langkah VM di docs/gate3-checklist.md (T16 di VM, cron, key scrape, konfirmasi DevOps, T14)
+Belum dilakukan: push dan PR (butuh izin pemilik repo); langkah VM di docs/fase-2-vm-production/gate3-checklist.md (T16 di VM, cron, key scrape, konfirmasi DevOps, T14)
 Penyebab berhenti: <hanya bila BERHENTI>
 ```
