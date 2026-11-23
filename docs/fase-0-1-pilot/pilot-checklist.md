@@ -1,6 +1,6 @@
 # Checklist pilot: deploy VM, smoke, dan Gate 2
 
-Dasar menyalakan stack, perintah `gatewayctl`, dan troubleshooting ada di `docs/operator-guide.md`. Semua perintah dijalankan dari root repo di VM. Host hanya butuh Docker dan `make`. Jangan menjalankan `make down` atau menghapus volume tanpa persetujuan pemilik repo: key, team, dan spend ikut hilang.
+Dasar menyalakan stack, perintah `gatewayctl`, dan troubleshooting ada di `docs/panduan/operator-guide.md`. Semua perintah dijalankan dari root repo di VM. Host hanya butuh Docker dan `make`. Jangan menjalankan `make down` atau menghapus volume tanpa persetujuan pemilik repo: key, team, dan spend ikut hilang.
 
 ## 1. Konfirmasi Gate 1
 
@@ -15,12 +15,12 @@ Gate 1 ditutup 2026-11-03: semua nilai sementara dikonfirmasi tanpa perubahan.
 | Target waktu pencabutan key (T05) | 5 menit | 5 menit, 2026-11-03, Farhan Purdi |
 | Akses jaringan dan TLS | HTTP langsung ke `litellm-a` di `LITELLM_PORT`; TLS dan proxy oleh DevOps (spec bagian 10) | Sesuai nilai sementara, 2026-11-03, Farhan Purdi |
 | Versi LiteLLM | `v1.106.4` dipin digest (tidak ada tag `-stable` berversi) | `v1.106.4` (`sha256:c169fb3a…`), 2026-11-03, Farhan Purdi |
-| Harga Terra/Sol (`model_info`) | Per 1M token, tier Standard, input / input cache / cache write (30m) / output: Terra $2 / $0.20 / $2.50 / $12, Sol $4 / $0.40 / $5 / $20. Harga Sol promo sampai setidaknya 2026-11-21; cek ulang pada tanggal itu (`docs/operator-guide.md`, "Mengubah harga model") | Sesuai halaman harga OpenAI (dicek 2026-11-03), 2026-11-03, Farhan Purdi |
+| Harga Terra/Sol (`model_info`) | Per 1M token, tier Standard, input / input cache / cache write (30m) / output: Terra $2 / $0.20 / $2.50 / $12, Sol $4 / $0.40 / $5 / $20. Harga Sol promo sampai setidaknya 2026-11-21; cek ulang pada tanggal itu (`docs/panduan/operator-guide.md`, "Mengubah harga model") | Sesuai halaman harga OpenAI (dicek 2026-11-03), 2026-11-03, Farhan Purdi |
 
 ## 2. Deploy VM
 
 1. `cp deploy/env/vm.env.example deploy/env/vm.env`, isi semua nilai dari secret manager (master key, salt key, password, `OPENAI_API_KEY` milik OpenAI Project khusus gateway), lalu `chmod 600 deploy/env/vm.env`. `LITELLM_SALT_KEY` tidak boleh diganti setelah ada data.
-2. Isi `LITELLM_PORT` di `vm.env` (default 4000). Pastikan port itu terbuka dari jaringan kantor di firewall VM dan belum dipakai aplikasi lain (`docs/setup-admin.md` B1). Tidak ada sertifikat: virtual key dan master key lewat jaringan kantor tanpa enkripsi sampai proxy DevOps dipasang (spec bagian 10).
+2. Isi `LITELLM_PORT` di `vm.env` (default 4000). Pastikan port itu terbuka dari jaringan kantor di firewall VM dan belum dipakai aplikasi lain (`docs/panduan/setup-admin.md` B1). Tidak ada sertifikat: virtual key dan master key lewat jaringan kantor tanpa enkripsi sampai proxy DevOps dipasang (spec bagian 10).
 3. `make up ENV=vm`, lalu `make ps ENV=vm`: semua service `healthy`/`running`. Dari laptop di jaringan kantor, `curl -sS http://<ip-vm>:<LITELLM_PORT>/health/liveliness` harus menjawab 200.
 4. `make plan ENV=vm` (exit 2 = ada perubahan; tinjau rencananya), lalu `make apply ENV=vm` dengan `OPERATOR` terisi. Di database baru tidak ada aksi destruktif; bila apply meminta `--confirm`, berhenti dan periksa plan. Ulangi `make plan ENV=vm`: harus exit 0.
 5. Terbitkan key smoke: `SMOKE_KEY=$(make -s ctl ENV=vm ARGS='key issue --user smoke@perusahaan.com --label smoke')`. Key hanya tampil sekali; jangan ditulis ke file atau chat.
@@ -39,7 +39,7 @@ Gate 1 ditutup 2026-11-03: semua nilai sementara dikonfirmasi tanpa perubahan.
 
 ## 4. Manual (T06, T07)
 
-Dengan `docs/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budget $2; hentikan bila mendekati batas). `baseURL` diisi `http://<ip-vm>:<LITELLM_PORT>/v1`, tanpa file CA (`docs/setup-admin.md` B7). Pakai hanya dari jaringan kantor, karena key terkirim tanpa enkripsi.
+Dengan `docs/panduan/opencode.example.json` dan `COMPANY_LLM_KEY` diisi key smoke (budget $2; hentikan bila mendekati batas). `baseURL` diisi `http://<ip-vm>:<LITELLM_PORT>/v1`, tanpa file CA (`docs/panduan/setup-admin.md` B7). Pakai hanya dari jaringan kantor, karena key terkirim tanpa enkripsi.
 
 - [ ] **T06:** sesi OpenCode >= 10 menit di `company-coding`, lalu di `company-reasoning`. Token mengalir bertahap, tanpa putus atau timeout.
 - [ ] **T07:** tugas agent yang mengedit file (baca file, ubah, jalankan perintah) di kedua alias. Tool call dan hasilnya terproses benar.

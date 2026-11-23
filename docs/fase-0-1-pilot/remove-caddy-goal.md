@@ -3,10 +3,10 @@
 Pakai di sesi Claude Code baru, di root repo, dalam mode auto:
 
 ```
-/goal execute docs/superpowers/plans/2026-10-29-remove-caddy-goal.md
+/goal execute docs/fase-0-1-pilot/remove-caddy-goal.md
 ```
 
-Pemilik repo meminta file ini dijalankan, termasuk saved workflow `remove-caddy`. Rencana lengkapnya ada di `docs/superpowers/plans/2026-10-29-remove-caddy.md`, dan Global Constraints di sana berlaku untuk semua langkah.
+Pemilik repo meminta file ini dijalankan, termasuk saved workflow `remove-caddy`. Rencana lengkapnya ada di `docs/fase-0-1-pilot/remove-caddy-plan.md`, dan Global Constraints di sana berlaku untuk semua langkah.
 
 ## Selesai bila
 

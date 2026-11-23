@@ -12,8 +12,8 @@ make test                       # unit, integrasi, dan acceptance
 
 | Dokumen | Untuk |
 | --- | --- |
-| `docs/setup-admin.md` | **Mulai di sini:** langkah demi langkah setup lokal, VM, dan tugas admin |
-| `docs/operator-guide.md` | Referensi: menyalakan stack, mencoba request, operasi harian, troubleshooting |
-| `docs/pilot-checklist.md` | Deploy VM, smoke T06/T07, rekonsiliasi T11, catatan Gate 2 |
-| `docs/onboarding.md` | Pengguna akhir: menyimpan key, OpenCode, arti error |
-| `docs/superpowers/specs/2026-10-27-litellm-pilot-design.md` | Spec desain |
+| `docs/panduan/setup-admin.md` | **Mulai di sini:** langkah demi langkah setup lokal, VM, dan tugas admin |
+| `docs/panduan/operator-guide.md` | Referensi: menyalakan stack, mencoba request, operasi harian, troubleshooting |
+| `docs/fase-0-1-pilot/pilot-checklist.md` | Deploy VM, smoke T06/T07, rekonsiliasi T11, catatan Gate 2 |
+| `docs/panduan/onboarding.md` | Pengguna akhir: menyimpan key, OpenCode, arti error |
+| `docs/fase-0-1-pilot/spec.md` | Spec desain |

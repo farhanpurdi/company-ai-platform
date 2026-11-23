@@ -8,7 +8,7 @@
 
 **Tech Stack:** Docker Compose v2, GNU Make, POSIX sh, Python 3.12 dengan pytest, PyYAML, dan httpx (semuanya di container `tools`), LiteLLM v1.106.4 yang dipin ke digest.
 
-**Spec:** `docs/superpowers/specs/2026-10-27-litellm-pilot-design.md`. Perubahannya ada di commit `4abb0e0`: bagian 2, 3, 4.1, 4.2, 8.2 (T10), 10, dan 11.
+**Spec:** `docs/fase-0-1-pilot/spec.md`. Perubahannya ada di commit `4abb0e0`: bagian 2, 3, 4.1, 4.2, 8.2 (T10), 10, dan 11.
 
 ## Global Constraints
 
@@ -22,7 +22,7 @@
 - Isi `deploy/env/*.env`, master key, salt key, password, dan virtual key tidak pernah dicetak atau di-commit.
 - Satu commit per task di branch `feat/remove-caddy`, selalu lewat hook pre-commit (tanpa `--no-verify`). Tidak push tanpa izin pemilik repo.
 - `make test` tidak boleh berjalan dua kali bersamaan, karena uji acceptance berbagi state stack.
-- File yang tidak boleh diubah: spec (sudah final di `4abb0e0`), `docs/LLM_GATEWAY_ARCHITECTURE.md`, `docs/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/superpowers/plans/2026-10-27-litellm-pilot.md`, `deploy/litellm/config.yaml` (kecuali baris komentar, lihat di atas).
+- File yang tidak boleh diubah: spec (sudah final di `4abb0e0`), `docs/referensi/LLM_GATEWAY_ARCHITECTURE.md`, `docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md`, `docs/fase-0-1-pilot/plan.md`, `deploy/litellm/config.yaml` (kecuali baris komentar, lihat di atas).
 
 ## Review Focus
 
@@ -48,8 +48,8 @@
 | `tests/acceptance/test_allowlist.py` | Hapus | 3 |
 | `scripts/t10-scan-logs.sh`, `deploy/tests/test_t10_scan.py` | Ubah | 4 |
 | `deploy/tests/test_docs_access.py` | Buat (Task 5), tambah parameter (Task 6) | 5, 6 |
-| `docs/setup-admin.md` | Ubah | 5 |
-| `docs/operator-guide.md`, `docs/pilot-checklist.md`, `docs/onboarding.md`, `docs/opencode.example.json` | Ubah | 6 |
+| `docs/panduan/setup-admin.md` | Ubah | 5 |
+| `docs/panduan/operator-guide.md`, `docs/fase-0-1-pilot/pilot-checklist.md`, `docs/panduan/onboarding.md`, `docs/panduan/opencode.example.json` | Ubah | 6 |
 | `deploy/litellm/config.yaml` (baris komentar saja) | Ubah | 7 (perbaikan gerbang) |
 
 Urutan dan ketergantungan antartask ada di bagian [Eksekusi dengan Workflow dan goal](#eksekusi-dengan-workflow-dan-goal).
@@ -133,7 +133,7 @@ def test_git_push_asks_owner():
         ({"file_path": "/x/deploy/env/vm.env.example"}, 0),
         ({"file_path": "/x/deploy/compose.yaml", "new_string": "  LITELLM_LOG: DEBUG"}, 2),
         ({"file_path": "/x/deploy/litellm/config.yaml", "content": "allow_requests_on_db_unavailable: true"}, 2),
-        ({"file_path": "/x/docs/operator-guide.md", "new_string": "Jangan set LITELLM_LOG: DEBUG"}, 0),
+        ({"file_path": "/x/docs/panduan/operator-guide.md", "new_string": "Jangan set LITELLM_LOG: DEBUG"}, 0),
     ],
 )
 def test_file_guard(tool_input, code):
@@ -222,7 +222,7 @@ Gerbang tidak melepas blokir saat `stop_hook_active` bernilai true. Selama Claud
    - `deploy/caddy/` dan `tests/acceptance/test_allowlist.py` tidak ada;
    - `deploy/tests/test_compose_profiles.py`, `deploy/tests/test_docs_access.py`, `deploy/tests/test_claude_hooks.py`, `.claude/settings.json`, `.claude/hooks/guard-bash.sh`, dan `.claude/hooks/guard-files.sh` ada.
 3. File terlarang tidak berubah:
-   - `git diff --quiet main HEAD -- docs/LLM_GATEWAY_ARCHITECTURE.md docs/LITELLM_IMPLEMENTATION_GUIDE.md docs/superpowers/plans/2026-10-27-litellm-pilot.md`;
+   - `git diff --quiet main HEAD -- docs/referensi/LLM_GATEWAY_ARCHITECTURE.md docs/referensi/LITELLM_IMPLEMENTATION_GUIDE.md docs/fase-0-1-pilot/plan.md`;
    - `git diff --quiet -I '^[[:space:]]*#' main HEAD -- deploy/litellm/config.yaml`: hanya baris komentar yang boleh berbeda dari `main`;
    - `git diff --quiet 4abb0e0 HEAD -- docs/superpowers/specs/`.
 4. `git grep -n -i caddy -- . ':!docs' ':!deploy/tests' ':!.claude'` tidak mengeluarkan apa-apa. Dokumen dijaga `test_docs_access.py`, dan nama test di `deploy/tests` boleh menyebut Caddy.
@@ -704,11 +704,11 @@ git commit -m "test: T10 scans gateway containers and spend log, no Caddy access
 
 ---
 
-### Task 5: `docs/setup-admin.md` tanpa Caddy
+### Task 5: `docs/panduan/setup-admin.md` tanpa Caddy
 
 **Files:**
 - Create: `deploy/tests/test_docs_access.py`
-- Modify: `docs/setup-admin.md`
+- Modify: `docs/panduan/setup-admin.md`
 
 **Interfaces:**
 - Consumes: nama variabel dan port dari Task 1, target Makefile dari Task 2.
@@ -733,7 +733,7 @@ STALE = [
 ]
 # Path -> text that must appear.
 DOCS = {
-    "docs/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1"],
+    "docs/panduan/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1"],
 }
 
 
@@ -754,9 +754,9 @@ def test_required_facts(path):
 - [ ] **Step 2: Jalankan test dan pastikan gagal**
 
 Run: `make unit`
-Expected: FAIL pada `test_no_stale_instructions[docs/setup-admin.md]` (misalnya `make local-ca`, `VM_TLS`, `--resolve`) dan `test_required_facts[docs/setup-admin.md]`.
+Expected: FAIL pada `test_no_stale_instructions[docs/panduan/setup-admin.md]` (misalnya `make local-ca`, `VM_TLS`, `--resolve`) dan `test_required_facts[docs/panduan/setup-admin.md]`.
 
-- [ ] **Step 3: Tulis ulang bagian yang terdampak di `docs/setup-admin.md`**
+- [ ] **Step 3: Tulis ulang bagian yang terdampak di `docs/panduan/setup-admin.md`**
 
 Fakta wajib per bagian:
 
@@ -769,7 +769,7 @@ Fakta wajib per bagian:
 | B3 | Baris `VM_TLS`, `LLM_HOST`, `LLM_ADMIN_HOST`, `LLM_HTTP_PORT`, `LLM_HTTPS_PORT`, `VPN_CIDR`, dan `TLS_CERT_DIR` diganti satu baris `LITELLM_PORT`: biarkan `4000`, ganti bila port itu terpakai. Blok "Tambahkan juga satu baris..." dihapus. |
 | B4 | Judul baru "Bila VM pernah dipasang dengan versi lama (dengan Caddy)". Di `vm.env` cukup ada rahasia (`LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_API_BASE`) dan `LITELLM_PORT`. Baris lain boleh dihapus dan tidak mengganggu bila tertinggal. Nama variabel lama tidak ditulis, karena `STALE` menolaknya. Lalu `make up ENV=vm`, yang membuang container Caddy lama otomatis. Volume lama dibiarkan. |
 | B5 | `make up ENV=vm`, `make ps ENV=vm` (empat service healthy, tanpa `mock-upstream`). Dari laptop: `curl -sS http://10.0.0.5:4000/health/liveliness` → `200`/`"I'm alive!"`; `curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.5:4000/key/list` → `401` (management API butuh master key). Kalau gagal: `address already in use` → ganti `LITELLM_PORT`; `Connection refused`/timeout → firewall VM belum membuka port, atau laptop tidak di jaringan kantor. |
-| B7 | Tanpa langkah CA. Salin template seperti di `docs/onboarding.md`, `baseURL` `http://10.0.0.5:4000/v1`, simpan key sebagai `COMPANY_LLM_KEY`. |
+| B7 | Tanpa langkah CA. Salin template seperti di `docs/panduan/onboarding.md`, `baseURL` `http://10.0.0.5:4000/v1`, simpan key sebagai `COMPANY_LLM_KEY`. |
 | "Nanti: ..." | Judul "Nanti: proxy DevOps di depan VM". Daftar kebutuhan dari spec bagian 10 (TLS, allowlist tiga path, management API dan Admin UI hanya dari jaringan tepercaya, load balancing ke kedua replika dengan port `litellm-b` dibuka lewat perubahan repo, timeout baca ≥ 600 detik tanpa buffering, header key tidak dicatat di access log). Setelah siap, pengguna mengganti `baseURL` ke alamat proxy. |
 | C "Melihat log" | `make logs ARGS='-f litellm-a'` menggantikan baris `caddy`. |
 
@@ -783,7 +783,7 @@ Expected: PASS, semua test lulus.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/setup-admin.md deploy/tests/test_docs_access.py
+git add docs/panduan/setup-admin.md deploy/tests/test_docs_access.py
 git commit -m "docs: admin setup without Caddy or TLS (LITELLM_PORT)"
 ```
 
@@ -792,7 +792,7 @@ git commit -m "docs: admin setup without Caddy or TLS (LITELLM_PORT)"
 ### Task 6: Dokumen operator dan pengguna lainnya
 
 **Files:**
-- Modify: `docs/operator-guide.md`, `docs/pilot-checklist.md`, `docs/onboarding.md`, `docs/opencode.example.json`, `deploy/tests/test_docs_access.py`
+- Modify: `docs/panduan/operator-guide.md`, `docs/fase-0-1-pilot/pilot-checklist.md`, `docs/panduan/onboarding.md`, `docs/panduan/opencode.example.json`, `deploy/tests/test_docs_access.py`
 
 **Interfaces:**
 - Consumes: `DOCS` dari Task 5.
@@ -801,10 +801,10 @@ git commit -m "docs: admin setup without Caddy or TLS (LITELLM_PORT)"
 - [ ] **Step 1: Tambah entri ke `DOCS` di `deploy/tests/test_docs_access.py`**
 
 ```python
-    "docs/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans"],
-    "docs/pilot-checklist.md": ["LITELLM_PORT", "http://<ip-vm>:<LITELLM_PORT>/v1"],
-    "docs/onboarding.md": ["http://10.0.0.5:4000/v1"],
-    "docs/opencode.example.json": ['"baseURL": "http://<ip-vm>:4000/v1"'],
+    "docs/panduan/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans"],
+    "docs/fase-0-1-pilot/pilot-checklist.md": ["LITELLM_PORT", "http://<ip-vm>:<LITELLM_PORT>/v1"],
+    "docs/panduan/onboarding.md": ["http://10.0.0.5:4000/v1"],
+    "docs/panduan/opencode.example.json": ['"baseURL": "http://<ip-vm>:4000/v1"'],
 ```
 
 Tambahkan juga test berikut, supaya template tetap JSON valid:
@@ -812,7 +812,7 @@ Tambahkan juga test berikut, supaya template tetap JSON valid:
 ```python
 def test_opencode_template_is_valid_json():
     import json
-    doc = json.loads((REPO / "docs" / "opencode.example.json").read_text(encoding="utf-8"))
+    doc = json.loads((REPO / "docs" / "panduan" / "opencode.example.json").read_text(encoding="utf-8"))
     assert doc["provider"]["company"]["options"]["baseURL"] == "http://<ip-vm>:4000/v1"
 ```
 
@@ -825,15 +825,15 @@ Expected: FAIL pada parameter keempat dokumen baru dan pada `test_opencode_templ
 
 | File | Isi baru |
 | --- | --- |
-| `docs/operator-guide.md` §1 | Diagram: `client (OpenCode/curl) --HTTP--> litellm-a (port LITELLM_PORT; litellm-b hanya di jaringan Docker) --> OpenAI (VM) atau mock-upstream (lokal)`, lalu Postgres dan Redis seperti sekarang. Hapus baris host inference dan host admin. |
-| `docs/operator-guide.md` tabel profil | Baris Alamat: lokal `http://127.0.0.1:4000`, VM `http://<ip-vm>:4000` (`LITELLM_PORT`). Baris TLS: "tidak ada; TLS diurus DevOps di level jaringan (spec bagian 10)". Baris Host admin diganti "Admin UI dan management API": "port yang sama (`/ui`), dilindungi master key; lokal hanya dari `127.0.0.1`". |
-| `docs/operator-guide.md` §3 | Tanpa `make local-ca`. `curl -sS http://127.0.0.1:4000/v1/chat/completions ...`. OpenCode lokal: `baseURL` `http://127.0.0.1:4000/v1`, tanpa `/etc/hosts` dan tanpa CA. |
-| `docs/operator-guide.md` §4 log | `make logs ARGS='-f litellm-a'` menggantikan baris `caddy`. |
-| `docs/operator-guide.md` §6 | Hapus butir Sertifikat dan DNS. Butir Jaringan: port `LITELLM_PORT` terbuka dari jaringan kantor, VM bisa keluar ke `api.openai.com`. Cek: `curl -sS http://<ip-vm>:4000/health/liveliness` → 200. |
-| `docs/operator-guide.md` §7 | Baris `bind: address already in use` → ganti `LITELLM_PORT`. Hapus baris sertifikat lokal, 404 host inference, 403 host admin, dan error sertifikat VM. Baris baru: "Port lama (8443, 80, 443) masih dipakai container gateway setelah update" → `make up` (atau `make up ENV=vm`) memakai `--remove-orphans` untuk membuang container lama. |
-| `docs/pilot-checklist.md` | Gate 1: baris "Domain internal" dan "CIDR VPN" diganti "Akses jaringan dan TLS" dengan nilai sementara "HTTP langsung ke `litellm-a` di `LITELLM_PORT`; TLS dan proxy oleh DevOps (spec bagian 10)". Langkah 2.1: hapus `VPN_CIDR` dari daftar isian. Langkah 2.2 diganti: isi `LITELLM_PORT` (default 4000), pastikan port itu terbuka dari jaringan kantor. Langkah 2.3: hapus `make vm-ca`. Bagian 4: `baseURL` `http://<ip-vm>:<LITELLM_PORT>/v1`, tanpa CA. Baris `SMOKE_KEY="$SMOKE_KEY" make smoke ENV=vm` tetap ada. |
-| `docs/onboarding.md` §2 | Dua paragraf IP/CA diganti: tim platform memberi alamat gateway, misalnya `http://10.0.0.5:4000/v1`; ganti `baseURL` dengan alamat itu. Pakai hanya di jaringan kantor, karena key terkirim tanpa enkripsi. |
-| `docs/opencode.example.json` | `"baseURL": "http://<ip-vm>:4000/v1"`. Isi lain tidak berubah. |
+| `docs/panduan/operator-guide.md` §1 | Diagram: `client (OpenCode/curl) --HTTP--> litellm-a (port LITELLM_PORT; litellm-b hanya di jaringan Docker) --> OpenAI (VM) atau mock-upstream (lokal)`, lalu Postgres dan Redis seperti sekarang. Hapus baris host inference dan host admin. |
+| `docs/panduan/operator-guide.md` tabel profil | Baris Alamat: lokal `http://127.0.0.1:4000`, VM `http://<ip-vm>:4000` (`LITELLM_PORT`). Baris TLS: "tidak ada; TLS diurus DevOps di level jaringan (spec bagian 10)". Baris Host admin diganti "Admin UI dan management API": "port yang sama (`/ui`), dilindungi master key; lokal hanya dari `127.0.0.1`". |
+| `docs/panduan/operator-guide.md` §3 | Tanpa `make local-ca`. `curl -sS http://127.0.0.1:4000/v1/chat/completions ...`. OpenCode lokal: `baseURL` `http://127.0.0.1:4000/v1`, tanpa `/etc/hosts` dan tanpa CA. |
+| `docs/panduan/operator-guide.md` §4 log | `make logs ARGS='-f litellm-a'` menggantikan baris `caddy`. |
+| `docs/panduan/operator-guide.md` §6 | Hapus butir Sertifikat dan DNS. Butir Jaringan: port `LITELLM_PORT` terbuka dari jaringan kantor, VM bisa keluar ke `api.openai.com`. Cek: `curl -sS http://<ip-vm>:4000/health/liveliness` → 200. |
+| `docs/panduan/operator-guide.md` §7 | Baris `bind: address already in use` → ganti `LITELLM_PORT`. Hapus baris sertifikat lokal, 404 host inference, 403 host admin, dan error sertifikat VM. Baris baru: "Port lama (8443, 80, 443) masih dipakai container gateway setelah update" → `make up` (atau `make up ENV=vm`) memakai `--remove-orphans` untuk membuang container lama. |
+| `docs/fase-0-1-pilot/pilot-checklist.md` | Gate 1: baris "Domain internal" dan "CIDR VPN" diganti "Akses jaringan dan TLS" dengan nilai sementara "HTTP langsung ke `litellm-a` di `LITELLM_PORT`; TLS dan proxy oleh DevOps (spec bagian 10)". Langkah 2.1: hapus `VPN_CIDR` dari daftar isian. Langkah 2.2 diganti: isi `LITELLM_PORT` (default 4000), pastikan port itu terbuka dari jaringan kantor. Langkah 2.3: hapus `make vm-ca`. Bagian 4: `baseURL` `http://<ip-vm>:<LITELLM_PORT>/v1`, tanpa CA. Baris `SMOKE_KEY="$SMOKE_KEY" make smoke ENV=vm` tetap ada. |
+| `docs/panduan/onboarding.md` §2 | Dua paragraf IP/CA diganti: tim platform memberi alamat gateway, misalnya `http://10.0.0.5:4000/v1`; ganti `baseURL` dengan alamat itu. Pakai hanya di jaringan kantor, karena key terkirim tanpa enkripsi. |
+| `docs/panduan/opencode.example.json` | `"baseURL": "http://<ip-vm>:4000/v1"`. Isi lain tidak berubah. |
 
 - [ ] **Step 4: Jalankan test dan pastikan lulus**
 
@@ -843,7 +843,7 @@ Expected: PASS, semua test lulus.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/operator-guide.md docs/pilot-checklist.md docs/onboarding.md docs/opencode.example.json deploy/tests/test_docs_access.py
+git add docs/panduan/operator-guide.md docs/fase-0-1-pilot/pilot-checklist.md docs/panduan/onboarding.md docs/panduan/opencode.example.json deploy/tests/test_docs_access.py
 git commit -m "docs: operator, checklist and onboarding without Caddy or TLS"
 ```
 
@@ -907,7 +907,7 @@ File: `~/.claude/workflows/remove-caddy.js`. Ini workflow pribadi, tidak di-comm
 ```js
 export const meta = {
   name: 'remove-caddy',
-  description: 'Execute docs/superpowers/plans/2026-10-29-remove-caddy.md Tasks 1-7 Step 1 on feat/remove-caddy (no push)',
+  description: 'Execute docs/fase-0-1-pilot/remove-caddy-plan.md Tasks 1-7 Step 1 on feat/remove-caddy (no push)',
   whenToUse: 'Only in company-ai-platform on branch feat/remove-caddy, after plan Task 0 and 0b are done.',
   phases: [
     { title: 'Implement', detail: 'one fresh agent per task, plan steps in order' },
@@ -916,7 +916,7 @@ export const meta = {
   ],
 }
 
-const PLAN = 'docs/superpowers/plans/2026-10-29-remove-caddy.md'
+const PLAN = 'docs/fase-0-1-pilot/remove-caddy-plan.md'
 const GATE = '.claude/hooks/remove-caddy-success.sh'
 const RULES =
   `Work in the current checkout on branch feat/remove-caddy. Read the plan's Global Constraints first. ` +
@@ -970,7 +970,7 @@ return await agent(
 Mulai sesi Claude Code baru di root repo, di branch `feat/remove-caddy`, dalam mode auto, lalu kirim:
 
 ```
-/goal execute docs/superpowers/plans/2026-10-29-remove-caddy-goal.md
+/goal execute docs/fase-0-1-pilot/remove-caddy-goal.md
 ```
 
 File itu berisi kriteria selesai, kondisi berhenti, prasyarat, langkah, aturan, dan format laporan akhir.

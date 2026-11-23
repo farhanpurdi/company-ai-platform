@@ -3,7 +3,7 @@
 Each wave sends N streams at once through the gateway (company-coding) and then the same
 N streams straight to the mock upstream; the difference of the two p95 values is the
 gateway's overhead. Run by `make loadtest`; numbers from a laptop are for development,
-the official ones come from the VM (docs/gate3-checklist.md).
+the official ones come from the VM (docs/fase-2-vm-production/gate3-checklist.md).
 """
 
 from __future__ import annotations

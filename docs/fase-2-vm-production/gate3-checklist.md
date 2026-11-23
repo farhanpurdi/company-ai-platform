@@ -1,6 +1,6 @@
 # Checklist Gate 3: produksi di VM
 
-Dasar perintah dan troubleshooting ada di `docs/operator-guide.md`. Semua perintah dijalankan dari root repo. Spec: `docs/superpowers/specs/2026-11-04-fase2-vm-production-design.md`. Syarat Gate 2 (`docs/pilot-checklist.md`) sudah lulus.
+Dasar perintah dan troubleshooting ada di `docs/panduan/operator-guide.md`. Semua perintah dijalankan dari root repo. Spec: `docs/fase-2-vm-production/spec.md`. Syarat Gate 2 (`docs/fase-0-1-pilot/pilot-checklist.md`) sudah lulus.
 
 Jangan menjalankan `make down -v`, `docker compose down -v`, atau menghapus volume. `make restore` di VM hanya atas permintaan pemilik repo.
 
@@ -20,13 +20,13 @@ Jangan menjalankan `make down -v`, `docker compose down -v`, atau menghapus volu
    make -s ctl ENV=vm ARGS='key issue --user prometheus --label scrape'
    ```
 
-   Key hanya tampil sekali. Kirim ke DevOps lewat kanal aman (`docs/devops-handoff.md`), jangan ditulis ke file atau chat, lalu jalankan `clear`.
+   Key hanya tampil sekali. Kirim ke DevOps lewat kanal aman (`docs/fase-2-vm-production/devops-handoff.md`), jangan ditulis ke file atau chat, lalu jalankan `clear`.
 5. Cek dari VM: `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4000/metrics/` tanpa key harus 401.
 
 ## 2. Backup
 
 1. Jalankan sekali manual: `make -s backup ENV=vm`. Harapan: satu path `var/backups/litellm-<waktu>.dump` tercetak, dan `ls -l var/backups` menampilkan `-rw-------`. Ini membuat `var/backups/`; cron memakai redirect ke folder itu, jadi jalankan langkah ini sebelum crontab.
-2. Pasang crontab sekali (`docs/setup-admin.md` B9), dengan `PATH`:
+2. Pasang crontab sekali (`docs/panduan/setup-admin.md` B9), dengan `PATH`:
 
    ```
    PATH=/usr/local/bin:/usr/bin:/bin
@@ -59,11 +59,11 @@ Dijalankan di luar jam kerja. Stack lokal memakai project dan volume sendiri (`l
 
 ## 5. T14
 
-Menunggu load balancing dari DevOps (`docs/devops-handoff.md`). Langkah uji ditulis di sini saat alamat load balancer tersedia, mengikuti alamat yang diberikan DevOps.
+Menunggu load balancing dari DevOps (`docs/fase-2-vm-production/devops-handoff.md`). Langkah uji ditulis di sini saat alamat load balancer tersedia, mengikuti alamat yang diberikan DevOps.
 
 ## 6. Konfirmasi DevOps
 
-Semua butir di `docs/devops-handoff.md` bagian 5 terisi: proxy dan load balancing, Prometheus mengambil `/metrics/` dengan key scrape, dashboard dan alert aktif, cek `/health/liveliness` dari luar, dan `var/backups/` tersalin keluar VM.
+Semua butir di `docs/fase-2-vm-production/devops-handoff.md` bagian 5 terisi: proxy dan load balancing, Prometheus mengambil `/metrics/` dengan key scrape, dashboard dan alert aktif, cek `/health/liveliness` dari luar, dan `var/backups/` tersalin keluar VM.
 
 ## 7. Tabel hasil
 

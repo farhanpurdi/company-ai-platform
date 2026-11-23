@@ -13,13 +13,13 @@ STALE = [
 ]
 # Path -> text that must appear.
 DOCS = {
-    "docs/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1", "crontab"],
-    "docs/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans", "make backup", "make restore"],
-    "docs/pilot-checklist.md": ["LITELLM_PORT", "http://<ip-vm>:<LITELLM_PORT>/v1"],
-    "docs/devops-handoff.md": ["/metrics", "Authorization: Bearer", "var/backups", "/health/liveliness", "26 jam"],
-    "docs/gate3-checklist.md": ["make test-failure", "make loadtest", "LITELLM_PORT=4100", "15 2 * * *", "T14"],
-    "docs/onboarding.md": ["http://10.0.0.5:4000/v1"],
-    "docs/opencode.example.json": ['"baseURL": "http://<ip-vm>:4000/v1"'],
+    "docs/panduan/setup-admin.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "http://10.0.0.5:4000/v1", "crontab"],
+    "docs/panduan/operator-guide.md": ["LITELLM_PORT", "http://127.0.0.1:4000", "--remove-orphans", "make backup", "make restore"],
+    "docs/fase-0-1-pilot/pilot-checklist.md": ["LITELLM_PORT", "http://<ip-vm>:<LITELLM_PORT>/v1"],
+    "docs/fase-2-vm-production/devops-handoff.md": ["/metrics", "Authorization: Bearer", "var/backups", "/health/liveliness", "26 jam"],
+    "docs/fase-2-vm-production/gate3-checklist.md": ["make test-failure", "make loadtest", "LITELLM_PORT=4100", "15 2 * * *", "T14"],
+    "docs/panduan/onboarding.md": ["http://10.0.0.5:4000/v1"],
+    "docs/panduan/opencode.example.json": ['"baseURL": "http://<ip-vm>:4000/v1"'],
 }
 
 
@@ -37,5 +37,5 @@ def test_required_facts(path):
 
 def test_opencode_template_is_valid_json():
     import json
-    doc = json.loads((REPO / "docs" / "opencode.example.json").read_text(encoding="utf-8"))
+    doc = json.loads((REPO / "docs" / "panduan" / "opencode.example.json").read_text(encoding="utf-8"))
     assert doc["provider"]["company"]["options"]["baseURL"] == "http://<ip-vm>:4000/v1"
