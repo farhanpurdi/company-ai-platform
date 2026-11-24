@@ -256,32 +256,32 @@ Jika gate gagal, fase diperpanjang, bukan dilewati.
 
 ### Fase 0 — Persiapan (minggu 1)
 
-- [ ] Kunci keputusan di bagian 1 dan dokumentasikan alasannya
+- [x] Kunci keputusan di bagian 1 dan dokumentasikan alasannya
 - [ ] Inventaris user, team, dan alias yang dibutuhkan tiap team
-- [ ] Buat OpenAI Project khusus gateway atas nama perusahaan
+- [x] Buat OpenAI Project khusus gateway atas nama perusahaan
 - [ ] Cek usage tier dan rate limit organisasi OpenAI untuk Terra dan Sol
 - [ ] Pasang budget dan alert di level OpenAI Project sebagai pengaman kedua
-- [ ] Konfirmasi ID model persis (`gpt-5.6-terra`, `gpt-5.6-sol`) atau generasi yang lebih baru
+- [x] Konfirmasi ID model persis (`gpt-5.6-terra`, `gpt-5.6-sol`) atau generasi yang lebih baru
 - [ ] Tetapkan kebijakan data: kelas data apa yang boleh dikirim ke OpenAI
-- [ ] Tetapkan toleransi overshoot budget dan target waktu pencabutan key (mis. maks. 5 menit)
-- [ ] Generate `LITELLM_MASTER_KEY` dan `LITELLM_SALT_KEY`, simpan di secret manager
-- [ ] Siapkan VM di jaringan internal dengan Docker, IP tetap, dan port gateway (default 4000)
-- [ ] Pilih versi LiteLLM (min. v1.93.0-stable) dan pin ke image digest
+- [x] Tetapkan toleransi overshoot budget dan target waktu pencabutan key (mis. maks. 5 menit)
+- [x] Generate `LITELLM_MASTER_KEY` dan `LITELLM_SALT_KEY`, simpan di secret manager
+- [x] Siapkan VM di jaringan internal dengan Docker, IP tetap, dan port gateway (default 4000)
+- [x] Pilih versi LiteLLM (min. v1.93.0-stable) dan pin ke image digest
 
 ### Fase 1 — Pilot (minggu 2–3)
 
 Setup:
 
-- [ ] Deploy Docker Compose (bagian 5.3) di VM; pengguna terhubung lewat HTTP ke `http://<ip-vm>:4000`
-- [ ] Terapkan `config.yaml` (bagian 5.2) dengan 3 alias
-- [ ] Response caching mati; Redis hanya untuk counter dan rate limit
-- [ ] `LITELLM_MODE=PRODUCTION` sejak awal
+- [x] Deploy Docker Compose (bagian 5.3) di VM; pengguna terhubung lewat HTTP ke `http://<ip-vm>:4000`
+- [x] Terapkan `config.yaml` (bagian 5.2) dengan 3 alias
+- [x] Response caching mati; Redis hanya untuk counter dan rate limit
+- [x] `LITELLM_MODE=PRODUCTION` sejak awal
 - [ ] Admin UI hanya dari VPN
-- [ ] Buat team pilot: IT/Developer + 1 team non-teknis
+- [x] Buat team pilot: IT/Developer + 1 team non-teknis
 - [ ] Provision 5–10 pengguna pilot (bagian 5.4)
-- [ ] Logging metadata aktif, tanpa prompt/output dan key mentah
-- [ ] Reload model cost map
-- [ ] Siapkan template OpenCode dan panduan onboarding singkat
+- [x] Logging metadata aktif, tanpa prompt/output dan key mentah
+- [x] Reload model cost map
+- [x] Siapkan template OpenCode dan panduan onboarding singkat
 
 Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualitas Terra vs Sol, kemudahan setup).
 
@@ -290,23 +290,23 @@ Uji: jalankan T01–T11 (bagian 7) dan kumpulkan feedback pilot (latency, kualit
 Infrastruktur:
 
 - [ ] Postgres dan Redis sebagai container di VM, backup harian (spec Fase 2)
-- [ ] Deploy dengan Docker Compose di VM produksi, minimal 2 replika LiteLLM (pola `litellm-a`/`litellm-b` dari pilot)
+- [x] Deploy dengan Docker Compose di VM produksi, minimal 2 replika LiteLLM (pola `litellm-a`/`litellm-b` dari pilot)
 - [ ] Hitung koneksi DB = replika × worker × pool size sebelum menambah replika
 - [ ] PgBouncer bila total koneksi mendekati batas Postgres
-- [ ] Healthcheck dan `restart: unless-stopped` di setiap container
+- [x] Healthcheck dan `restart: unless-stopped` di setiap container
 - [ ] TLS dan load balancing ke kedua replika disediakan DevOps di depan VM
 
 Database dan migrasi:
 
-- [ ] `DISABLE_SCHEMA_UPDATE=true` di semua replika kecuali `litellm-a`
-- [ ] Migrasi skema hanya dijalankan `litellm-a` saat start; saat upgrade, `litellm-a` naik dulu, baru replika lain
-- [ ] Migrasikan atau buat ulang team, user, dan key dari pilot
+- [x] `DISABLE_SCHEMA_UPDATE=true` di semua replika kecuali `litellm-a`
+- [x] Migrasi skema hanya dijalankan `litellm-a` saat start; saat upgrade, `litellm-a` naik dulu, baru replika lain
+- [x] Migrasikan atau buat ulang team, user, dan key dari pilot
 
 Observability dan audit:
 
 - [ ] Dashboard: request/menit, latency p95, time to first token, error rate, spend harian per team dan per alias
 - [ ] Alert: error rate > 5%, lonjakan latency, lonjakan 429 dari OpenAI, Postgres/Redis down, spend team mendekati batas, kegagalan provisioning/offboarding
-- [ ] Audit administrasi: siapa membuat/mencabut key, mengubah budget, atau mengganti mapping alias, dengan nilai sebelum/sesudah
+- [x] Audit administrasi: siapa membuat/mencabut key, mengubah budget, atau mengganti mapping alias, dengan nilai sebelum/sesudah
 
 Uji: jalankan T12–T16 (bagian 7).
 
